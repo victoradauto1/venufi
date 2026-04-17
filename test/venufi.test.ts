@@ -1,9 +1,9 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
+const { time } = require("@nomicfoundation/hardhat-network-helpers");
 
 describe("VenueFi", function () {
-
   async function deployFixture() {
     const [owner, user1, user2] = await ethers.getSigners();
 
@@ -34,7 +34,9 @@ describe("VenueFi", function () {
     it("Should not allow users to invest if not enough ETH", async function () {
       const { venue, user1 } = await loadFixture(deployFixture);
       const investmentAmount = ethers.parseEther("0.1");
-      await expect(venue.connect(user1).invest({ value: 0n })).to.be.revertedWithCustomError(venue, "ZeroValue");
+      await expect(
+        venue.connect(user1).invest({ value: 0n }),
+      ).to.be.revertedWithCustomError(venue, "ZeroValue");
     });
 
     it("Should increase total invested amount", async function () {
@@ -45,6 +47,23 @@ describe("VenueFi", function () {
       expect(totalInvested).to.equal(investmentAmount);
     });
 
-  });
+    it("should revert NotFunding", async function () {
+      const { venue, user1 } = await loadFixture(deployFixture);
+      const investmentAmount = ethers.parseEther("0.1");
+      await venue.closeFunding(); // precisa existir no contrato
+      await expect(
+        venue.connect(user1).invest({ value: investmentAmount }),
+      ).to.be.revertedWithCustomError(venue, "NotFunding");
+    });
 
+    it("should revert FundingEnded", async function () {
+      const { venue, user1 } = await loadFixture(deployFixture);
+      const investmentAmount = ethers.parseEther("0.1");
+      const deadline = await venue.deadline();
+      await time.increaseTo(deadline + 1n); // avança o tempo além do deadline
+      await expect(
+        venue.connect(user1).invest({ value: investmentAmount }),
+      ).to.be.revertedWithCustomError(venue, "FundingEnded");
+    });
+  });
 });

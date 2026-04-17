@@ -78,4 +78,13 @@ contract VenueFi {
     function getUserShares(address user) external view returns (uint256) {
         return balance[user];
     }
+
+    /*//////////////////////////////////////////////////////////////
+                              FUNCTION CLOSE FUNDING()
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Close the funding
+    function closeFunding() external {
+        state = State.ACTIVE;
+    }
 }
