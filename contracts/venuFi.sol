@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract VenueFi {
+contract VenueFi is ReentrancyGuard {
     /*//////////////////////////////////////////////////////////////
                                 TYPES
     //////////////////////////////////////////////////////////////*/
@@ -38,6 +39,7 @@ contract VenueFi {
     //////////////////////////////////////////////////////////////*/
 
     event Invested(address indexed investor, uint256 amount);
+    event Refunded(address indexed investor, uint256 amount);
 
     /*//////////////////////////////////////////////////////////////
                                 ERRORS
@@ -46,6 +48,8 @@ contract VenueFi {
     error NotFunding();
     error FundingEnded();
     error ZeroValue();
+    error NotRefund();
+    error DeadlineNotReached();
 
     /*//////////////////////////////////////////////////////////////
                             CONSTRUCTOR
@@ -87,4 +91,25 @@ contract VenueFi {
     function closeFunding() external {
         state = State.ACTIVE;
     }
+
+    /*//////////////////////////////////////////////////////////////
+                              FUNCTION REFUND()
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Refund the investment
+    function refund(uint256 amount) external nonReentrant {
+    if (state != State.ACTIVE) revert NotRefund();
+    if (balance[msg.sender] == 0) revert ZeroValue();
+    if (amount == 0) revert ZeroValue();
+    if (amount > balance[msg.sender]) revert NotRefund();
+
+    balance[msg.sender] -= amount;
+    totalInvested -= amount;
+    totalRaised -= amount;
+    totalSupply -= amount;
+
+    (bool success, ) = msg.sender.call{value: amount}("");
+    if (!success) revert NotRefund();
+    emit Refunded(msg.sender, amount);
+}
 }
