@@ -32,6 +32,9 @@ contract VenueFi is ReentrancyGuard {
     /// @notice Total supply of tokens
     uint256 public totalSupply;
 
+    /// @notice The minimum amount of tokens to be raised to successfully end the campaign
+    uint256 public fundingGoal;
+
     mapping(address => uint256) public balance;
 
     /*//////////////////////////////////////////////////////////////
@@ -55,8 +58,9 @@ contract VenueFi is ReentrancyGuard {
                             CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    constructor(uint256 _deadline) {
+    constructor(uint256 _deadline, uint256 _fundingGoal) {
         deadline = block.timestamp + _deadline;
+        fundingGoal = _fundingGoal;
         state = State.FUNDING;
     }
 
@@ -84,32 +88,37 @@ contract VenueFi is ReentrancyGuard {
     }
 
     /*//////////////////////////////////////////////////////////////
-                              FUNCTION CLOSE FUNDING()
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Close the funding
-    function closeFunding() external {
-        state = State.ACTIVE;
-    }
-
-    /*//////////////////////////////////////////////////////////////
                               FUNCTION REFUND()
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Refund the investment
     function refund(uint256 amount) external nonReentrant {
-    if (state != State.ACTIVE) revert NotRefund();
-    if (balance[msg.sender] == 0) revert ZeroValue();
-    if (amount == 0) revert ZeroValue();
-    if (amount > balance[msg.sender]) revert NotRefund();
+        if (state != State.ACTIVE) revert NotRefund();
+        if (balance[msg.sender] == 0) revert ZeroValue();
+        if (amount == 0) revert ZeroValue();
+        if (amount > balance[msg.sender]) revert NotRefund();
 
-    balance[msg.sender] -= amount;
-    totalInvested -= amount;
-    totalRaised -= amount;
-    totalSupply -= amount;
+        balance[msg.sender] -= amount;
+        totalInvested -= amount;
+        totalRaised -= amount;
+        totalSupply -= amount;
 
-    (bool success, ) = msg.sender.call{value: amount}("");
-    if (!success) revert NotRefund();
-    emit Refunded(msg.sender, amount);
-}
+        (bool success, ) = msg.sender.call{value: amount}("");
+        if (!success) revert NotRefund();
+        emit Refunded(msg.sender, amount);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            FUNCTION FINALIZE FUNDING()
+    //////////////////////////////////////////////////////////////*/
+
+    function finalizeFunding() external {
+        if (totalRaised > fundingGoal) {
+            state = State.ACTIVE;
+        } else {
+            if (block.timestamp > deadline) {
+                state = State.ENDED;
+            }
+        }
+    }
 }
