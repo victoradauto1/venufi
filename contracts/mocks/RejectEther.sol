@@ -14,8 +14,8 @@ contract RejectEther {
         target.invest{value: msg.value}();
     }
 
-    function doRefund(uint256 amount) external {
-        target.refund(amount);
+    function doRefund() external {
+        target.refund();
     }
 
     // without receive() or fallback() — rejects ETH automatically
