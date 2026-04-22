@@ -43,6 +43,7 @@ contract VenueFi is ReentrancyGuard {
 
     event Invested(address indexed investor, uint256 amount);
     event Refunded(address indexed investor, uint256 amount);
+    event Deposited(address indexed depositor, uint256 amount);
 
     /*//////////////////////////////////////////////////////////////
                                 ERRORS
@@ -112,6 +113,7 @@ contract VenueFi is ReentrancyGuard {
                             FUNCTION FINALIZE FUNDING()
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Finalize the funding period
     function finalizeFunding() external {
         if (totalRaised > fundingGoal) {
             state = State.ACTIVE;
@@ -120,5 +122,18 @@ contract VenueFi is ReentrancyGuard {
                 state = State.ENDED;
             }
         }
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            FUNCTION DEPOSIT REVENUE()
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Deposit revenue into the campaign
+    function depositRevenue() external payable {
+        if (state != State.ACTIVE) revert NotRefund();
+        if (msg.value == 0) revert ZeroValue();
+
+        totalRaised += msg.value;
+        emit Deposited(msg.sender, msg.value);
     }
 }
