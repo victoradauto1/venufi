@@ -35,14 +35,26 @@ contract VenueFi is ReentrancyGuard {
     /// @notice The minimum amount of tokens to be raised to successfully end the campaign
     uint256 public fundingGoal;
 
+    /// @notice Accumulate revenue per token
+    uint256 public accRevenuePerToken;
+
+    /// @notice Precision for calculations
+    uint256 public constant PRECISION = 1e18;
+
+    /// @notice Mapping of user balances
     mapping(address => uint256) public balance;
 
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Event emitted when a user invests in the campaign
     event Invested(address indexed investor, uint256 amount);
+
+    /// @notice Event emitted when a user refunds their investment
     event Refunded(address indexed investor, uint256 amount);
+
+    /// @notice Event emitted when revenue is deposited into the campaign
     event Deposited(address indexed depositor, uint256 amount);
 
     /*//////////////////////////////////////////////////////////////
@@ -59,6 +71,9 @@ contract VenueFi is ReentrancyGuard {
                             CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Constructor for the VenueFi contract
+    /// @param _deadline The deadline for the funding period in seconds
+    /// @param _fundingGoal The minimum amount of tokens to be raised to successfully end the campaign
     constructor(uint256 _deadline, uint256 _fundingGoal) {
         deadline = block.timestamp + _deadline;
         fundingGoal = _fundingGoal;
@@ -84,6 +99,8 @@ contract VenueFi is ReentrancyGuard {
     }
 
     /// @notice Returns the shares of a user
+    /// @param user The address of the user
+    /// @return The amount of tokens owned by the user
     function getUserShares(address user) external view returns (uint256) {
         return balance[user];
     }
@@ -93,6 +110,7 @@ contract VenueFi is ReentrancyGuard {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Refund the investment
+    /// @param amount The amount of tokens to refund
     function refund(uint256 amount) external nonReentrant {
         if (state != State.ACTIVE) revert NotRefund();
         if (balance[msg.sender] == 0) revert ZeroValue();

