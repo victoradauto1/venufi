@@ -20,60 +20,97 @@ contract VenueFi is ReentrancyGuard {
     /// @notice Current state of the campaign
     State public state;
 
-    /// @notice Deadline for the campaign
+    /// @notice Deadline for the funding period
     uint256 public deadline;
 
-    /// @notice Total amount raised in the campaign
+    /// @notice Historical total amount raised during the funding period (immutable after funding)
     uint256 public totalRaised;
 
-    /// @notice Total invested amount
-    uint256 public totalInvested;
+    /// @notice Current capital held in the contract (decreases on refund)
+    uint256 public currentRaised;
 
-    /// @notice Total supply of tokens
+    /// @notice Total revenue deposited into the campaign by the operator
+    uint256 public totalRevenue;
+
+    /// @notice Total supply of shares
     uint256 public totalSupply;
 
-    /// @notice The minimum amount of tokens to be raised to successfully end the campaign
+    /// @notice The minimum amount of ETH required to finalize the campaign
     uint256 public fundingGoal;
 
-    /// @notice Accumulate revenue per token
+    /// @notice Accumulated revenue per token, scaled by PRECISION
     uint256 public accRevenuePerToken;
 
-    /// @notice Precision for calculations
+    /// @notice Precision factor for fixed-point arithmetic
     uint256 public constant PRECISION = 1e18;
 
-    /// @notice Mapping of user balances
+    /// @notice Mapping of investor share balances
     mapping(address => uint256) public balance;
+
+    /// @notice Mapping of investor reward debts (used to calculate pending revenue)
+    mapping(address => uint256) public rewardDebt;
 
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Event emitted when a user invests in the campaign
+    /// @notice Emitted when a user invests in the campaign
     event Invested(address indexed investor, uint256 amount);
 
-    /// @notice Event emitted when a user refunds their investment
+    /// @notice Emitted when a user refunds their investment
     event Refunded(address indexed investor, uint256 amount);
 
-    /// @notice Event emitted when revenue is deposited into the campaign
+    /// @notice Emitted when revenue is deposited into the campaign
     event Deposited(address indexed depositor, uint256 amount);
+
+    /// @notice Emitted when a user claims their pending revenue
+    event Claimed(address indexed user, uint256 amount);
+
+    /// @notice Emitted when the campaign state changes
+    /// @param newState The new state of the campaign
+    event StateChanged(State newState);
 
     /*//////////////////////////////////////////////////////////////
                                 ERRORS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Thrown when action requires FUNDING state
     error NotFunding();
-    error FundingEnded();
-    error ZeroValue();
-    error NotRefund();
+
+    /// @notice Thrown when action requires ENDED state
+    error NotEnded();
+
+    /// @notice Thrown when the funding deadline has not been reached yet
     error DeadlineNotReached();
+
+    /// @notice Thrown when the funding deadline has already passed
+    error FundingEnded();
+
+    /// @notice Thrown when a zero value is provided
+    error ZeroValue();
+
+    /// @notice Thrown when an ETH transfer fails
+    error TransferFailed();
+
+    /// @notice Thrown when action requires ACTIVE state
+    error NotActive();
+
+    /// @notice Thrown when depositRevenue is called with no investors
+    error NoInvestors();
+
+    /// @notice Thrown when funding goal has been reached and operation is not allowed
+    error FundingGoalReached();
+
+    /// @notice Thrown when funding goal has not been reached and operation is not allowed
+    error FundingGoalNotReached();
 
     /*//////////////////////////////////////////////////////////////
                             CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Constructor for the VenueFi contract
-    /// @param _deadline The deadline for the funding period in seconds
-    /// @param _fundingGoal The minimum amount of tokens to be raised to successfully end the campaign
+    /// @param _deadline Duration of the funding period in seconds
+    /// @param _fundingGoal Minimum amount of ETH required to finalize the campaign
     constructor(uint256 _deadline, uint256 _fundingGoal) {
         deadline = block.timestamp + _deadline;
         fundingGoal = _fundingGoal;
@@ -84,23 +121,26 @@ contract VenueFi is ReentrancyGuard {
                         INVESTMENT IMPLEMENTATION
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Invest in the campaign
+    /// @notice Invest ETH into the campaign during the FUNDING period
     function invest() external payable {
         if (state != State.FUNDING) revert NotFunding();
         if (block.timestamp >= deadline) revert FundingEnded();
         if (msg.value == 0) revert ZeroValue();
 
         totalRaised += msg.value;
-        totalInvested += msg.value;
+        currentRaised += msg.value;
         balance[msg.sender] += msg.value;
         totalSupply += msg.value;
+
+        // synchronize rewardDebt so investor does not capture past revenue
+        rewardDebt[msg.sender] = (balance[msg.sender] * accRevenuePerToken) / PRECISION;
 
         emit Invested(msg.sender, msg.value);
     }
 
-    /// @notice Returns the shares of a user
+    /// @notice Returns the share balance of a user
     /// @param user The address of the user
-    /// @return The amount of tokens owned by the user
+    /// @return The amount of shares owned by the user
     function getUserShares(address user) external view returns (uint256) {
         return balance[user];
     }
@@ -109,21 +149,21 @@ contract VenueFi is ReentrancyGuard {
                               FUNCTION REFUND()
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Refund the investment
-    /// @param amount The amount of tokens to refund
-    function refund(uint256 amount) external nonReentrant {
-        if (state != State.ACTIVE) revert NotRefund();
+    /// @notice Refund the full investment
+    /// @dev Only callable in ENDED state — campaign must have expired without reaching goal
+    function refund() external nonReentrant {
+        if (state != State.ENDED) revert NotEnded();
         if (balance[msg.sender] == 0) revert ZeroValue();
-        if (amount == 0) revert ZeroValue();
-        if (amount > balance[msg.sender]) revert NotRefund();
 
-        balance[msg.sender] -= amount;
-        totalInvested -= amount;
-        totalRaised -= amount;
+        uint256 amount = balance[msg.sender];
+
+        balance[msg.sender] = 0;
+        currentRaised -= amount;
         totalSupply -= amount;
+        rewardDebt[msg.sender] = 0;
 
         (bool success, ) = msg.sender.call{value: amount}("");
-        if (!success) revert NotRefund();
+        if (!success) revert TransferFailed();
         emit Refunded(msg.sender, amount);
     }
 
@@ -131,27 +171,82 @@ contract VenueFi is ReentrancyGuard {
                             FUNCTION FINALIZE FUNDING()
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Finalize the funding period
+    /// @notice Finalize the campaign when the funding goal has been reached
+    /// @dev Allows early finalization if funding goal is reached before deadline (fix #2)
+    /// @dev Transitions state from FUNDING to ACTIVE
     function finalizeFunding() external {
-        if (totalRaised > fundingGoal) {
-            state = State.ACTIVE;
-        } else {
-            if (block.timestamp > deadline) {
-                state = State.ENDED;
-            }
-        }
+        if (state != State.FUNDING) revert NotFunding();
+        if (totalRaised < fundingGoal) revert FundingGoalNotReached();
+
+        state = State.ACTIVE;
+        emit StateChanged(State.ACTIVE);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        FUNCTION EXPIRE FUNDING()
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Expire the campaign when deadline has passed and goal was not reached
+    /// @dev Transitions state from FUNDING to ENDED, enabling refunds
+    function expireFunding() external {
+        if (state != State.FUNDING) revert NotFunding();
+        if (block.timestamp <= deadline) revert DeadlineNotReached();
+        if (totalRaised >= fundingGoal) revert FundingGoalReached();
+
+        state = State.ENDED;
+        emit StateChanged(State.ENDED);
     }
 
     /*//////////////////////////////////////////////////////////////
                             FUNCTION DEPOSIT REVENUE()
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Deposit revenue into the campaign
+    /// @notice Deposit revenue to be distributed proportionally to investors
+    /// @dev Updates accRevenuePerToken based on current totalSupply
     function depositRevenue() external payable {
-        if (state != State.ACTIVE) revert NotRefund();
+        if (state != State.ACTIVE) revert NotActive();
         if (msg.value == 0) revert ZeroValue();
+        if (totalSupply == 0) revert NoInvestors();
 
-        totalRaised += msg.value;
+        accRevenuePerToken += (msg.value * PRECISION) / totalSupply;
+        totalRevenue += msg.value;
+
         emit Deposited(msg.sender, msg.value);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            FUNCTION PENDING()
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Returns the pending revenue for a user
+    /// @param user The address of the user
+    /// @return The amount of claimable revenue for the user
+    /// @dev Returns 0 defensively if accumulated < rewardDebt to avoid underflow.
+    ///      This should never happen in normal operation — if it does, it indicates
+    ///      a rewardDebt accounting bug elsewhere in the contract.
+    function pending(address user) public view returns (uint256) {
+        uint256 accumulated = (balance[user] * accRevenuePerToken) / PRECISION;
+        if (accumulated < rewardDebt[user]) return 0;
+        return accumulated - rewardDebt[user];
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        FUNCTION CLAIM REVENUE()
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Claim all pending revenue for the caller
+    /// @dev rewardDebt is updated before transfer following CEI pattern
+    function claimRevenue() external nonReentrant {
+        if (state != State.ACTIVE) revert NotActive();
+
+        uint256 pendingRevenue = pending(msg.sender);
+        if (pendingRevenue == 0) revert ZeroValue();
+
+        rewardDebt[msg.sender] = (balance[msg.sender] * accRevenuePerToken) / PRECISION;
+
+        (bool success, ) = msg.sender.call{value: pendingRevenue}("");
+        if (!success) revert TransferFailed();
+
+        emit Claimed(msg.sender, pendingRevenue);
     }
 }

