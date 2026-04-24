@@ -353,6 +353,36 @@ describe("VenueFi", function () {
         ethers.parseEther("0.5"),
       );
     });
+
+    it("should revert NoInvestors if totalSupply is zero", async function () {
+      const [owner] = await ethers.getSigners();
+      const Harness = await ethers.getContractFactory("VenueFiHarness");
+      const harness = await Harness.deploy(3600, ethers.parseEther("1"));
+      await harness.waitForDeployment();
+
+      await harness.forceActive(); // ACTIVE with totalSupply == 0
+
+      await expect(
+        harness
+          .connect(owner)
+          .depositRevenue({ value: ethers.parseEther("0.1") }),
+      ).to.be.revertedWithCustomError(harness, "NoInvestors");
+    });
+
+    it("should return zero from pending() if accumulated < rewardDebt", async function () {
+      const [, user1] = await ethers.getSigners();
+      const Harness = await ethers.getContractFactory("VenueFiHarness");
+      const harness = await Harness.deploy(3600, ethers.parseEther("1"));
+      await harness.waitForDeployment();
+
+      await harness.connect(user1).invest({ value: ethers.parseEther("1.1") });
+      await harness.finalizeFunding();
+
+      // force rewardDebt higher than any possible accumulated value
+      await harness.forceRewardDebt(user1.address, ethers.parseEther("999"));
+
+      expect(await harness.pending(user1.address)).to.equal(0n);
+    });
   });
 
   describe("Claim Revenue", function () {
