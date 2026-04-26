@@ -21,5 +21,13 @@ contract RejectEther {
         target.claimRevenue();
     }
 
+    function doWithdraw() external {
+        target.withdrawOperatorRevenue();
+    }
+
+    function setTarget(address _target) external {
+    target = VenueFi(_target);
+}
+
     // no receive() — rejects ETH, forcing !success in the contract
 }

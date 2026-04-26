@@ -50,6 +50,12 @@ contract VenueFi is ReentrancyGuard {
     /// @notice Mapping of investor reward debts (used to calculate pending revenue)
     mapping(address => uint256) public rewardDebt;
 
+    /// @notice The percentage of revenue the operator receives (0-100)
+    uint256 public operatorFeePercentage;
+
+    /// @notice The address that receives the operator fee
+    address public operator;
+
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -104,6 +110,9 @@ contract VenueFi is ReentrancyGuard {
     /// @notice Thrown when funding goal has not been reached and operation is not allowed
     error FundingGoalNotReached();
 
+    /// @notice Thrown when the caller is not the operator
+    error NotOperator();
+
     /*//////////////////////////////////////////////////////////////
                             CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
@@ -111,9 +120,18 @@ contract VenueFi is ReentrancyGuard {
     /// @notice Constructor for the VenueFi contract
     /// @param _deadline Duration of the funding period in seconds
     /// @param _fundingGoal Minimum amount of ETH required to finalize the campaign
-    constructor(uint256 _deadline, uint256 _fundingGoal) {
+    /// @param _operator The address that receives the operator fee
+    /// @param _operatorFeePercentage The percentage of revenue the operator receives (0-100)
+    constructor(
+        uint256 _deadline,
+        uint256 _fundingGoal,
+        address _operator,
+        uint256 _operatorFeePercentage
+    ) {
         deadline = block.timestamp + _deadline;
         fundingGoal = _fundingGoal;
+        operator = _operator;
+        operatorFeePercentage = _operatorFeePercentage; // e.g. 10 = 10%
         state = State.FUNDING;
     }
 
@@ -133,7 +151,9 @@ contract VenueFi is ReentrancyGuard {
         totalSupply += msg.value;
 
         // synchronize rewardDebt so investor does not capture past revenue
-        rewardDebt[msg.sender] = (balance[msg.sender] * accRevenuePerToken) / PRECISION;
+        rewardDebt[msg.sender] =
+            (balance[msg.sender] * accRevenuePerToken) /
+            PRECISION;
 
         emit Invested(msg.sender, msg.value);
     }
@@ -242,11 +262,27 @@ contract VenueFi is ReentrancyGuard {
         uint256 pendingRevenue = pending(msg.sender);
         if (pendingRevenue == 0) revert ZeroValue();
 
-        rewardDebt[msg.sender] = (balance[msg.sender] * accRevenuePerToken) / PRECISION;
+        rewardDebt[msg.sender] =
+            (balance[msg.sender] * accRevenuePerToken) /
+            PRECISION;
 
         (bool success, ) = msg.sender.call{value: pendingRevenue}("");
         if (!success) revert TransferFailed();
 
         emit Claimed(msg.sender, pendingRevenue);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        FUNCTION WITHDRAW OPERATOR REVENUE()
+    //////////////////////////////////////////////////////////////*/
+
+    function withdrawOperatorRevenue() external {
+        if (msg.sender != operator) revert NotOperator();
+        uint256 operatorRevenue = (totalRevenue * operatorFeePercentage) /
+            100;
+        totalRevenue -= operatorRevenue;
+
+        (bool success, ) = msg.sender.call{value: operatorRevenue}("");
+        if (!success) revert TransferFailed();
     }
 }
