@@ -9,6 +9,10 @@ contract RejectEther {
         target = VenueFi(_target);
     }
 
+    function setTarget(address _target) external {
+        target = VenueFi(_target);
+    }
+
     function doInvest() external payable {
         target.invest{value: msg.value}();
     }
@@ -22,12 +26,8 @@ contract RejectEther {
     }
 
     function doWithdraw() external {
-        target.withdrawOperatorRevenue();
+        target.withdrawOperatorFees();
     }
-
-    function setTarget(address _target) external {
-    target = VenueFi(_target);
-}
 
     // no receive() — rejects ETH, forcing !success in the contract
 }

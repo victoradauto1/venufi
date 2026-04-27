@@ -44,17 +44,20 @@ contract VenueFi is ReentrancyGuard {
     /// @notice Precision factor for fixed-point arithmetic
     uint256 public constant PRECISION = 1e18;
 
-    /// @notice Mapping of investor share balances
-    mapping(address => uint256) public balance;
-
-    /// @notice Mapping of investor reward debts (used to calculate pending revenue)
-    mapping(address => uint256) public rewardDebt;
-
     /// @notice The percentage of revenue the operator receives (0-100)
     uint256 public operatorFeePercentage;
 
     /// @notice The address that receives the operator fee
     address public operator;
+
+    /// @notice Accumulated operator fees available for withdrawal
+    uint256 public operatorFeesAccrued;
+
+    /// @notice Mapping of investor share balances
+    mapping(address => uint256) public balance;
+
+    /// @notice Mapping of investor reward debts (used to calculate pending revenue)
+    mapping(address => uint256) public rewardDebt;
 
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
@@ -73,8 +76,10 @@ contract VenueFi is ReentrancyGuard {
     event Claimed(address indexed user, uint256 amount);
 
     /// @notice Emitted when the campaign state changes
-    /// @param newState The new state of the campaign
     event StateChanged(State newState);
+
+    /// @notice Emitted when the operator withdraws their accrued fees
+    event OperatorWithdrawn(address indexed operator, uint256 amount);
 
     /*//////////////////////////////////////////////////////////////
                                 ERRORS
@@ -120,8 +125,8 @@ contract VenueFi is ReentrancyGuard {
     /// @notice Constructor for the VenueFi contract
     /// @param _deadline Duration of the funding period in seconds
     /// @param _fundingGoal Minimum amount of ETH required to finalize the campaign
-    /// @param _operator The address that receives the operator fee
-    /// @param _operatorFeePercentage The percentage of revenue the operator receives (0-100)
+    /// @param _operator Address that receives the operator fee
+    /// @param _operatorFeePercentage Percentage of revenue the operator receives (0-100)
     constructor(
         uint256 _deadline,
         uint256 _fundingGoal,
@@ -131,7 +136,7 @@ contract VenueFi is ReentrancyGuard {
         deadline = block.timestamp + _deadline;
         fundingGoal = _fundingGoal;
         operator = _operator;
-        operatorFeePercentage = _operatorFeePercentage; // e.g. 10 = 10%
+        operatorFeePercentage = _operatorFeePercentage;
         state = State.FUNDING;
     }
 
@@ -151,9 +156,7 @@ contract VenueFi is ReentrancyGuard {
         totalSupply += msg.value;
 
         // synchronize rewardDebt so investor does not capture past revenue
-        rewardDebt[msg.sender] =
-            (balance[msg.sender] * accRevenuePerToken) /
-            PRECISION;
+        rewardDebt[msg.sender] = (balance[msg.sender] * accRevenuePerToken) / PRECISION;
 
         emit Invested(msg.sender, msg.value);
     }
@@ -192,7 +195,7 @@ contract VenueFi is ReentrancyGuard {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Finalize the campaign when the funding goal has been reached
-    /// @dev Allows early finalization if funding goal is reached before deadline (fix #2)
+    /// @dev Allows early finalization if funding goal is reached before deadline
     /// @dev Transitions state from FUNDING to ACTIVE
     function finalizeFunding() external {
         if (state != State.FUNDING) revert NotFunding();
@@ -222,14 +225,19 @@ contract VenueFi is ReentrancyGuard {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Deposit revenue to be distributed proportionally to investors
-    /// @dev Updates accRevenuePerToken based on current totalSupply
+    /// @dev Operator fee is deducted at deposit time and accrued for later withdrawal
+    /// @dev Remaining revenue updates accRevenuePerToken for investor distribution
     function depositRevenue() external payable {
         if (state != State.ACTIVE) revert NotActive();
         if (msg.value == 0) revert ZeroValue();
         if (totalSupply == 0) revert NoInvestors();
 
-        accRevenuePerToken += (msg.value * PRECISION) / totalSupply;
-        totalRevenue += msg.value;
+        uint256 fee = (msg.value * operatorFeePercentage) / 100;
+        uint256 investorRevenue = msg.value - fee;
+
+        operatorFeesAccrued += fee;
+        accRevenuePerToken += (investorRevenue * PRECISION) / totalSupply;
+        totalRevenue += investorRevenue;
 
         emit Deposited(msg.sender, msg.value);
     }
@@ -262,9 +270,7 @@ contract VenueFi is ReentrancyGuard {
         uint256 pendingRevenue = pending(msg.sender);
         if (pendingRevenue == 0) revert ZeroValue();
 
-        rewardDebt[msg.sender] =
-            (balance[msg.sender] * accRevenuePerToken) /
-            PRECISION;
+        rewardDebt[msg.sender] = (balance[msg.sender] * accRevenuePerToken) / PRECISION;
 
         (bool success, ) = msg.sender.call{value: pendingRevenue}("");
         if (!success) revert TransferFailed();
@@ -273,16 +279,22 @@ contract VenueFi is ReentrancyGuard {
     }
 
     /*//////////////////////////////////////////////////////////////
-                        FUNCTION WITHDRAW OPERATOR REVENUE()
+                        FUNCTION WITHDRAW OPERATOR FEES()
     //////////////////////////////////////////////////////////////*/
 
-    function withdrawOperatorRevenue() external {
+    /// @notice Withdraw all accrued operator fees
+    /// @dev Only callable by the operator address
+    function withdrawOperatorFees() external nonReentrant {
         if (msg.sender != operator) revert NotOperator();
-        uint256 operatorRevenue = (totalRevenue * operatorFeePercentage) /
-            100;
-        totalRevenue -= operatorRevenue;
 
-        (bool success, ) = msg.sender.call{value: operatorRevenue}("");
+        uint256 amount = operatorFeesAccrued;
+        if (amount == 0) revert ZeroValue();
+
+        operatorFeesAccrued = 0;
+
+        (bool success, ) = msg.sender.call{value: amount}("");
         if (!success) revert TransferFailed();
+
+        emit OperatorWithdrawn(msg.sender, amount);
     }
 }
