@@ -29,5 +29,9 @@ contract RejectEther {
         target.withdrawOperatorFees();
     }
 
+    function doDeposit() external payable {
+    target.depositRevenue{value: msg.value}();
+}
+
     // no receive() — rejects ETH, forcing !success in the contract
 }

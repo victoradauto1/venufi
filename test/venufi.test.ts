@@ -39,6 +39,15 @@ describe("VenueFi", function () {
       const { venue } = await loadFixture(deployFixture);
       expect(venue).to.not.be.undefined;
     });
+
+    it("should revert InvalidFeePercentage if fee > 100", async function () {
+      const [owner] = await ethers.getSigners();
+      const VenueFi = await ethers.getContractFactory("VenueFi");
+      const venue = await VenueFi.deploy(3600, ethers.parseEther("1"), owner.address, 10n);
+      await expect(
+        VenueFi.deploy(3600, ethers.parseEther("1"), owner.address, 101n)
+      ).to.be.revertedWithCustomError(venue, "InvalidFeePercentage");
+    });
   });
 
   describe("Investing", function () {
@@ -266,6 +275,14 @@ describe("VenueFi", function () {
       await venue.connect(owner).depositRevenue({ value: depositAmount });
       // totalRevenue stores only the investor portion (90%)
       expect(await venue.totalRevenue()).to.equal(ethers.parseEther("0.45"));
+    });
+
+    it("should revert NotOperator if non-operator deposits revenue", async function () {
+      const { venue, user1 } = await loadFixture(deployFixture);
+      await activateVenue(venue, user1);
+      await expect(
+        venue.connect(user1).depositRevenue({ value: ethers.parseEther("0.5") }),
+      ).to.be.revertedWithCustomError(venue, "NotOperator");
     });
 
     it("should revert NotActive if not in ACTIVE state", async function () {
@@ -580,7 +597,7 @@ describe("VenueFi", function () {
     it("should revert TransferFailed if ETH transfer to operator fails", async function () {
       const VenueFi = await ethers.getContractFactory("VenueFi");
       const RejectEther = await ethers.getContractFactory("RejectEther");
-      const [owner, user1] = await ethers.getSigners();
+      const [, user1] = await ethers.getSigners();
 
       const fakeOperator = await RejectEther.deploy(ethers.ZeroAddress);
       await fakeOperator.waitForDeployment();
@@ -597,8 +614,11 @@ describe("VenueFi", function () {
 
       await venue2.connect(user1).invest({ value: ethers.parseEther("1") });
       await venue2.finalizeFunding();
-      await venue2.connect(owner).depositRevenue({ value: ethers.parseEther("1") });
 
+      // fakeOperator deposits as operator
+      await fakeOperator.doDeposit({ value: ethers.parseEther("1") });
+
+      // fakeOperator has no receive() — transfer fails
       await expect(fakeOperator.doWithdraw()).to.be.revertedWithCustomError(
         venue2,
         "TransferFailed",

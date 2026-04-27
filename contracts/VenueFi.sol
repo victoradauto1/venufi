@@ -29,7 +29,7 @@ contract VenueFi is ReentrancyGuard {
     /// @notice Current capital held in the contract (decreases on refund)
     uint256 public currentRaised;
 
-    /// @notice Total revenue deposited into the campaign by the operator
+    /// @notice Total investor revenue deposited into the campaign
     uint256 public totalRevenue;
 
     /// @notice Total supply of shares
@@ -118,6 +118,9 @@ contract VenueFi is ReentrancyGuard {
     /// @notice Thrown when the caller is not the operator
     error NotOperator();
 
+    /// @notice Thrown when the operator fee percentage exceeds 100
+    error InvalidFeePercentage();
+
     /*//////////////////////////////////////////////////////////////
                             CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
@@ -133,6 +136,9 @@ contract VenueFi is ReentrancyGuard {
         address _operator,
         uint256 _operatorFeePercentage
     ) {
+        // fix #2: validate fee percentage at construction time
+        if (_operatorFeePercentage > 100) revert InvalidFeePercentage();
+
         deadline = block.timestamp + _deadline;
         fundingGoal = _fundingGoal;
         operator = _operator;
@@ -196,6 +202,7 @@ contract VenueFi is ReentrancyGuard {
 
     /// @notice Finalize the campaign when the funding goal has been reached
     /// @dev Allows early finalization if funding goal is reached before deadline
+    /// @dev Also callable after deadline if goal was reached
     /// @dev Transitions state from FUNDING to ACTIVE
     function finalizeFunding() external {
         if (state != State.FUNDING) revert NotFunding();
@@ -225,9 +232,12 @@ contract VenueFi is ReentrancyGuard {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Deposit revenue to be distributed proportionally to investors
+    /// @dev Only callable by the operator — prevents arbitrary revenue simulation
     /// @dev Operator fee is deducted at deposit time and accrued for later withdrawal
     /// @dev Remaining revenue updates accRevenuePerToken for investor distribution
     function depositRevenue() external payable {
+        // fix #1: only operator can deposit revenue
+        if (msg.sender != operator) revert NotOperator();
         if (state != State.ACTIVE) revert NotActive();
         if (msg.value == 0) revert ZeroValue();
         if (totalSupply == 0) revert NoInvestors();
