@@ -30,8 +30,11 @@ contract RejectEther {
     }
 
     function doDeposit() external payable {
-    target.depositRevenue{value: msg.value}();
-}
+        target.depositRevenue{value: msg.value}();
+    }
 
-    // no receive() — rejects ETH, forcing !success in the contract
+    function doWithdrawCapital() external {
+        target.withdrawCapital();
+    }
+
 }

@@ -81,6 +81,9 @@ contract VenueFi is ReentrancyGuard {
     /// @notice Emitted when the operator withdraws their accrued fees
     event OperatorWithdrawn(address indexed operator, uint256 amount);
 
+    /// @notice Emitted when the operator withdraws their capital
+    event CapitalWithdrawn(address indexed operator, uint256 amount);
+
     /*//////////////////////////////////////////////////////////////
                                 ERRORS
     //////////////////////////////////////////////////////////////*/
@@ -307,4 +310,25 @@ contract VenueFi is ReentrancyGuard {
 
         emit OperatorWithdrawn(msg.sender, amount);
     }
+
+    /*//////////////////////////////////////////////////////////////
+                        FUNCTION WITHDRAW CAPITAL()
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Withdraw all capital
+    /// @dev Only callable by the operator address
+    function withdrawCapital() external nonReentrant {
+    if (msg.sender != operator) revert NotOperator();
+    if (state != State.ACTIVE) revert NotActive();
+
+    uint256 amount = currentRaised;
+    if (amount == 0) revert ZeroValue();
+
+    currentRaised = 0;
+
+    (bool success, ) = msg.sender.call{value: amount}("");
+    if (!success) revert TransferFailed();
+
+    emit CapitalWithdrawn(msg.sender, amount);
+}
 }
