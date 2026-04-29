@@ -11,7 +11,8 @@ describe("VenueFi", function () {
 
     const VenueFi = await ethers.getContractFactory("VenueFi");
     const venue = await VenueFi.deploy(
-      3600,
+      3600, // funding deadline: 1h
+      31536000, // operating duration: 1 year
       ethers.parseEther("1"),
       owner.address,
       10n,
@@ -41,18 +42,13 @@ describe("VenueFi", function () {
     });
 
     it("should revert InvalidFeePercentage if fee > 100", async function () {
-      const [owner] = await ethers.getSigners();
-      const VenueFi = await ethers.getContractFactory("VenueFi");
-      const venue = await VenueFi.deploy(
-        3600,
-        ethers.parseEther("1"),
-        owner.address,
-        10n,
-      );
-      await expect(
-        VenueFi.deploy(3600, ethers.parseEther("1"), owner.address, 101n),
-      ).to.be.revertedWithCustomError(venue, "InvalidFeePercentage");
-    });
+  const [owner] = await ethers.getSigners();
+  const VenueFi = await ethers.getContractFactory("VenueFi");
+  const venue = await VenueFi.deploy(3600, 31536000, ethers.parseEther("1"), owner.address, 10n);
+  await expect(
+    VenueFi.deploy(3600, 31536000, ethers.parseEther("1"), owner.address, 101n)
+  ).to.be.revertedWithCustomError(venue, "InvalidFeePercentage");
+});
   });
 
   describe("Investing", function () {
@@ -234,12 +230,7 @@ describe("VenueFi", function () {
     it("should revert TransferFailed if ETH transfer fails", async function () {
       const VenueFi = await ethers.getContractFactory("VenueFi");
       const [owner] = await ethers.getSigners();
-      const venue2 = await VenueFi.deploy(
-        3600,
-        ethers.parseEther("5"),
-        owner.address,
-        10n,
-      );
+      const venue2 = await VenueFi.deploy(3600, 31536000, ethers.parseEther("5"), owner.address, 10n);
       await venue2.waitForDeployment();
 
       const RejectEther = await ethers.getContractFactory("RejectEther");
@@ -340,11 +331,12 @@ describe("VenueFi", function () {
       const [owner] = await ethers.getSigners();
       const Harness = await ethers.getContractFactory("VenueFiHarness");
       const harness = await Harness.deploy(
-        3600,
-        ethers.parseEther("1"),
-        owner.address,
-        10n,
-      );
+  3600,
+  31536000,       // operating duration
+  ethers.parseEther("1"),
+  owner.address,
+  10n,
+);
       await harness.waitForDeployment();
       await harness.forceActive();
       await expect(
@@ -421,11 +413,12 @@ describe("VenueFi", function () {
       const [owner, user1] = await ethers.getSigners();
       const Harness = await ethers.getContractFactory("VenueFiHarness");
       const harness = await Harness.deploy(
-        3600,
-        ethers.parseEther("1"),
-        owner.address,
-        10n,
-      );
+  3600,
+  31536000,       // operating duration
+  ethers.parseEther("1"),
+  owner.address,
+  10n,
+);
       await harness.waitForDeployment();
       await harness.connect(user1).invest({ value: ethers.parseEther("1.1") });
       await harness.finalizeFunding();
@@ -552,12 +545,7 @@ describe("VenueFi", function () {
     it("should revert TransferFailed if ETH transfer fails on claim", async function () {
       const VenueFi = await ethers.getContractFactory("VenueFi");
       const [owner] = await ethers.getSigners();
-      const venue2 = await VenueFi.deploy(
-        3600,
-        ethers.parseEther("0.05"),
-        owner.address,
-        10n,
-      );
+      const venue2 = await VenueFi.deploy(3600, 31536000, ethers.parseEther("0.05"), owner.address, 10n);
       await venue2.waitForDeployment();
 
       const RejectEther = await ethers.getContractFactory("RejectEther");
@@ -672,12 +660,7 @@ describe("VenueFi", function () {
       const fakeOperator = await RejectEther.deploy(ethers.ZeroAddress);
       await fakeOperator.waitForDeployment();
 
-      const venue2 = await VenueFi.deploy(
-        3600,
-        ethers.parseEther("0.5"),
-        await fakeOperator.getAddress(),
-        10n,
-      );
+      const venue2 = await VenueFi.deploy(3600, 31536000, ethers.parseEther("0.5"), await fakeOperator.getAddress(), 10n);
       await venue2.waitForDeployment();
 
       await fakeOperator.setTarget(await venue2.getAddress());
@@ -716,11 +699,12 @@ describe("VenueFi", function () {
       const [owner] = await ethers.getSigners();
       const Harness = await ethers.getContractFactory("VenueFiHarness");
       const harness = await Harness.deploy(
-        3600,
-        ethers.parseEther("1"),
-        owner.address,
-        10n,
-      );
+  3600,
+  31536000,       // operating duration
+  ethers.parseEther("1"),
+  owner.address,
+  10n,
+);
       await harness.waitForDeployment();
       await harness.forceActive();
       await expect(
@@ -769,12 +753,7 @@ describe("VenueFi", function () {
       const fakeOperator = await RejectEther.deploy(ethers.ZeroAddress);
       await fakeOperator.waitForDeployment();
 
-      const venue2 = await VenueFi.deploy(
-        3600,
-        ethers.parseEther("0.5"),
-        await fakeOperator.getAddress(),
-        10n,
-      );
+      const venue2 = await VenueFi.deploy(3600, 31536000, ethers.parseEther("0.5"), await fakeOperator.getAddress(), 10n);
       await venue2.waitForDeployment();
 
       await fakeOperator.setTarget(await venue2.getAddress());
@@ -785,6 +764,101 @@ describe("VenueFi", function () {
       await expect(
         fakeOperator.doWithdrawCapital(),
       ).to.be.revertedWithCustomError(venue2, "TransferFailed");
+    });
+  });
+
+  describe("Finalize Campaign", function () {
+    it("should revert NotActive if not in ACTIVE state", async function () {
+      const { venue } = await loadFixture(deployFixture);
+      await expect(venue.finalizeCampaign()).to.be.revertedWithCustomError(
+        venue,
+        "NotActive",
+      );
+    });
+
+    it("should revert CampaignNotEnded if called before endTime", async function () {
+      const { venue, user1 } = await loadFixture(deployFixture);
+      await activateVenue(venue, user1);
+      await expect(venue.finalizeCampaign()).to.be.revertedWithCustomError(
+        venue,
+        "CampaignNotEnded",
+      );
+    });
+
+    it("should revert CampaignNotEnded if operator calls before endTime", async function () {
+      const { venue, user1, owner } = await loadFixture(deployFixture);
+      await activateVenue(venue, user1);
+      await expect(
+        venue.connect(owner).finalizeCampaign(),
+      ).to.be.revertedWithCustomError(venue, "CampaignNotEnded");
+    });
+
+    it("should allow anyone to finalize after endTime", async function () {
+      const { venue, user1, user2 } = await loadFixture(deployFixture);
+      await activateVenue(venue, user1);
+      const endTime = await venue.endTime();
+      await time.increaseTo(endTime + 1n);
+      await venue.connect(user2).finalizeCampaign();
+      expect(await venue.state()).to.equal(2); // ENDED
+    });
+
+    it("should allow operator to finalize after endTime", async function () {
+      const { venue, user1, owner } = await loadFixture(deployFixture);
+      await activateVenue(venue, user1);
+      const endTime = await venue.endTime();
+      await time.increaseTo(endTime + 1n);
+      await venue.connect(owner).finalizeCampaign();
+      expect(await venue.state()).to.equal(2); // ENDED
+    });
+
+    it("should emit StateChanged event", async function () {
+      const { venue, user1 } = await loadFixture(deployFixture);
+      await activateVenue(venue, user1);
+      const endTime = await venue.endTime();
+      await time.increaseTo(endTime + 1n);
+      await expect(venue.finalizeCampaign())
+        .to.emit(venue, "StateChanged")
+        .withArgs(2);
+    });
+
+    it("should block depositRevenue after finalization", async function () {
+      const { venue, user1, owner } = await loadFixture(deployFixture);
+      await activateVenue(venue, user1);
+      const endTime = await venue.endTime();
+      await time.increaseTo(endTime + 1n);
+      await venue.finalizeCampaign();
+      await expect(
+        venue
+          .connect(owner)
+          .depositRevenue({ value: ethers.parseEther("0.5") }),
+      ).to.be.revertedWithCustomError(venue, "NotActive");
+    });
+  });
+
+  describe("Claim Revenue after finalization", function () {
+    it("should allow claim in ENDED state", async function () {
+      const { venue, user1, owner } = await loadFixture(deployFixture);
+      await venue.connect(user1).invest({ value: ethers.parseEther("1") });
+      await venue.finalizeFunding();
+      await venue
+        .connect(owner)
+        .depositRevenue({ value: ethers.parseEther("0.5") });
+
+      const endTime = await venue.endTime();
+      await time.increaseTo(endTime + 1n);
+      await venue.finalizeCampaign();
+
+      // user1 should still be able to claim after finalization
+      await venue.connect(user1).claimRevenue();
+      expect(await venue.pending(user1.address)).to.equal(0n);
+    });
+
+    it("should revert NotActive if claim attempted in FUNDING state", async function () {
+      const { venue, user1 } = await loadFixture(deployFixture);
+      await venue.connect(user1).invest({ value: ethers.parseEther("0.1") });
+      await expect(
+        venue.connect(user1).claimRevenue(),
+      ).to.be.revertedWithCustomError(venue, "NotActive");
     });
   });
 });

@@ -3,8 +3,13 @@ pragma solidity ^0.8.20;
 import "../VenueFi.sol";
 
 contract VenueFiHarness is VenueFi {
-    constructor(uint256 _deadline, uint256 _fundingGoal, address _operator, uint256 _operatorFeePercentage)
-    VenueFi(_deadline, _fundingGoal, _operator, _operatorFeePercentage) {}
+    constructor(
+        uint256 _deadline,
+        uint256 _operatingDuration,
+        uint256 _fundingGoal,
+        address _operator,
+        uint256 _operatorFeePercentage
+    ) VenueFi(_deadline, _operatingDuration, _fundingGoal, _operator, _operatorFeePercentage) {}
 
     /// @dev Force state to ACTIVE without requiring investors — used to test NoInvestors branch
     function forceActive() external {
