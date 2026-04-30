@@ -17,129 +17,108 @@ contract VenueFi is ReentrancyGuard {
                                STORAGE
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Current state of the campaign
     State public state;
 
-    /// @notice Deadline for the funding period
+    /// @notice Deadline for the funding phase
     uint256 public deadline;
 
-    /// @notice End time of the operating period — finalizeCampaign cannot be called before this
+    /// @notice End of operating period (set at finalizeFunding)
     uint256 public endTime;
 
-    /// @notice Historical total amount raised during the funding period (immutable after funding)
+    /// @notice Duration added to endTime when funding is finalized
+    uint256 public operatingDuration;
+
+    /// @notice Total ETH raised during funding (immutable after)
     uint256 public totalRaised;
 
-    /// @notice Current capital held in the contract (decreases on refund)
+    /// @notice Tracks withdrawable capital (independent from totalRaised)
     uint256 public currentRaised;
 
-    /// @notice Total investor revenue deposited into the campaign
+    /// @notice Total revenue distributed to investors (net of fees)
     uint256 public totalRevenue;
 
-    /// @notice Total supply of shares
     uint256 public totalSupply;
 
-    /// @notice The minimum amount of ETH required to finalize the campaign
     uint256 public fundingGoal;
 
-    /// @notice Accumulated revenue per token, scaled by PRECISION
+    /// @notice Accumulated revenue per share (scaled)
     uint256 public accRevenuePerToken;
 
-    /// @notice Precision factor for fixed-point arithmetic
     uint256 public constant PRECISION = 1e18;
 
-    /// @notice The percentage of revenue the operator receives (0-100)
     uint256 public operatorFeePercentage;
 
-    /// @notice The address that receives the operator fee
     address public operator;
 
-    /// @notice Accumulated operator fees available for withdrawal
+    /// @notice Fees accumulated for operator withdrawal
     uint256 public operatorFeesAccrued;
 
-    /// @notice Mapping of investor share balances
     mapping(address => uint256) public balance;
 
-    /// @notice Mapping of investor reward debts (used to calculate pending revenue)
+    /// @notice Tracks claimed share of accRevenuePerToken per user
     mapping(address => uint256) public rewardDebt;
 
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Emitted when a user invests in the campaign
     event Invested(address indexed investor, uint256 amount);
 
-    /// @notice Emitted when a user refunds their investment
     event Refunded(address indexed investor, uint256 amount);
 
-    /// @notice Emitted when revenue is deposited into the campaign
     event Deposited(address indexed depositor, uint256 amount);
 
-    /// @notice Emitted when a user claims their pending revenue
     event Claimed(address indexed user, uint256 amount);
 
-    /// @notice Emitted when the campaign state changes
     event StateChanged(State newState);
 
-    /// @notice Emitted when the operator withdraws their accrued fees
     event OperatorWithdrawn(address indexed operator, uint256 amount);
 
-    /// @notice Emitted when the operator withdraws their capital
     event CapitalWithdrawn(address indexed operator, uint256 amount);
 
     /*//////////////////////////////////////////////////////////////
                                 ERRORS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Thrown when action requires FUNDING state
     error NotFunding();
 
-    /// @notice Thrown when action requires ENDED state
     error NotEnded();
 
-    /// @notice Thrown when the funding deadline has not been reached yet
     error DeadlineNotReached();
 
-    /// @notice Thrown when the funding deadline has already passed
     error FundingEnded();
 
-    /// @notice Thrown when a zero value is provided
     error ZeroValue();
 
-    /// @notice Thrown when an ETH transfer fails
     error TransferFailed();
 
-    /// @notice Thrown when action requires ACTIVE state
     error NotActive();
 
-    /// @notice Thrown when depositRevenue is called with no investors
     error NoInvestors();
 
-    /// @notice Thrown when funding goal has been reached and operation is not allowed
     error FundingGoalReached();
 
-    /// @notice Thrown when funding goal has not been reached and operation is not allowed
     error FundingGoalNotReached();
 
-    /// @notice Thrown when the caller is not the operator
     error NotOperator();
 
-    /// @notice Thrown when the operator fee percentage exceeds 100
     error InvalidFeePercentage();
 
-    /// @notice Thrown when finalizeCampaign is called before endTime
+    /// @notice finalizeCampaign called before endTime
     error CampaignNotEnded();
+
+    /// @notice depositRevenue called after endTime
+    error CampaignAlreadyEnded();
 
     /*//////////////////////////////////////////////////////////////
                             CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Constructor for the VenueFi contract
-    /// @param _fundingDeadline Duration of the funding period in seconds
-    /// @param _operatingDuration Duration of the operating period in seconds (starts after finalizeFunding)
-    /// @param _fundingGoal Minimum amount of ETH required to finalize the campaign
-    /// @param _operator Address that receives the operator fee
-    /// @param _operatorFeePercentage Percentage of revenue the operator receives (0-100)
+    /// @param _fundingDeadline Duration of funding phase
+    /// @param _operatingDuration Duration of ACTIVE phase (starts at finalizeFunding)
+    /// @param _fundingGoal Minimum capital required
+    /// @param _operator Address receiving fees and capital
+    /// @param _operatorFeePercentage Fee taken on each revenue deposit
     constructor(
         uint256 _fundingDeadline,
         uint256 _operatingDuration,
@@ -150,7 +129,7 @@ contract VenueFi is ReentrancyGuard {
         if (_operatorFeePercentage > 100) revert InvalidFeePercentage();
 
         deadline = block.timestamp + _fundingDeadline;
-        endTime = block.timestamp + _fundingDeadline + _operatingDuration;
+        operatingDuration = _operatingDuration;
         fundingGoal = _fundingGoal;
         operator = _operator;
         operatorFeePercentage = _operatorFeePercentage;
@@ -161,7 +140,7 @@ contract VenueFi is ReentrancyGuard {
                         INVESTMENT IMPLEMENTATION
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Invest ETH into the campaign during the FUNDING period
+    /// @notice Deposit ETH during FUNDING and receive shares
     function invest() external payable {
         if (state != State.FUNDING) revert NotFunding();
         if (block.timestamp >= deadline) revert FundingEnded();
@@ -172,15 +151,12 @@ contract VenueFi is ReentrancyGuard {
         balance[msg.sender] += msg.value;
         totalSupply += msg.value;
 
-        // synchronize rewardDebt so investor does not capture past revenue
+        // prevents capturing past revenue
         rewardDebt[msg.sender] = (balance[msg.sender] * accRevenuePerToken) / PRECISION;
 
         emit Invested(msg.sender, msg.value);
     }
 
-    /// @notice Returns the share balance of a user
-    /// @param user The address of the user
-    /// @return The amount of shares owned by the user
     function getUserShares(address user) external view returns (uint256) {
         return balance[user];
     }
@@ -189,8 +165,7 @@ contract VenueFi is ReentrancyGuard {
                               FUNCTION REFUND()
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Refund the full investment
-    /// @dev Only callable in ENDED state — campaign must have expired without reaching goal
+    /// @dev Only valid if campaign expired without reaching goal
     function refund() external nonReentrant {
         if (state != State.ENDED) revert NotEnded();
         if (balance[msg.sender] == 0) revert ZeroValue();
@@ -208,17 +183,18 @@ contract VenueFi is ReentrancyGuard {
     }
 
     /*//////////////////////////////////////////////////////////////
-                            FUNCTION FINALIZE FUNDING()
+                        FUNCTION FINALIZE FUNDING()
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Finalize the campaign when the funding goal has been reached
-    /// @dev Allows early finalization if funding goal is reached before deadline
-    /// @dev Transitions state from FUNDING to ACTIVE
+    /// @notice Transitions FUNDING → ACTIVE when goal is reached
+    /// @dev Starts operating period at call time (not deployment)
     function finalizeFunding() external {
         if (state != State.FUNDING) revert NotFunding();
         if (totalRaised < fundingGoal) revert FundingGoalNotReached();
 
+        endTime = block.timestamp + operatingDuration;
         state = State.ACTIVE;
+
         emit StateChanged(State.ACTIVE);
     }
 
@@ -226,8 +202,7 @@ contract VenueFi is ReentrancyGuard {
                         FUNCTION EXPIRE FUNDING()
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Expire the campaign when deadline has passed and goal was not reached
-    /// @dev Transitions state from FUNDING to ENDED, enabling refunds
+    /// @dev Only callable after deadline if goal was not reached
     function expireFunding() external {
         if (state != State.FUNDING) revert NotFunding();
         if (block.timestamp <= deadline) revert DeadlineNotReached();
@@ -241,12 +216,12 @@ contract VenueFi is ReentrancyGuard {
                             FUNCTION DEPOSIT REVENUE()
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Deposit revenue to be distributed proportionally to investors
-    /// @dev Only callable by the operator while ACTIVE
-    /// @dev Operator fee is deducted at deposit time and accrued for later withdrawal
+    /// @dev Distributes revenue using accumulator model
+    /// @dev Fee is extracted upfront to avoid retroactive distortion
     function depositRevenue() external payable {
         if (msg.sender != operator) revert NotOperator();
         if (state != State.ACTIVE) revert NotActive();
+        if (block.timestamp >= endTime) revert CampaignAlreadyEnded();
         if (msg.value == 0) revert ZeroValue();
         if (totalSupply == 0) revert NoInvestors();
 
@@ -264,12 +239,7 @@ contract VenueFi is ReentrancyGuard {
                             FUNCTION PENDING()
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Returns the pending revenue for a user
-    /// @param user The address of the user
-    /// @return The amount of claimable revenue for the user
-    /// @dev Returns 0 defensively if accumulated < rewardDebt to avoid underflow.
-    ///      This should never happen in normal operation — if it does, it indicates
-    ///      a rewardDebt accounting bug elsewhere in the contract.
+    /// @dev Defensive guard prevents underflow if accounting is inconsistent
     function pending(address user) public view returns (uint256) {
         uint256 accumulated = (balance[user] * accRevenuePerToken) / PRECISION;
         if (accumulated < rewardDebt[user]) return 0;
@@ -280,10 +250,8 @@ contract VenueFi is ReentrancyGuard {
                         FUNCTION CLAIM REVENUE()
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Claim all pending revenue for the caller
-    /// @dev Callable in both ACTIVE and ENDED so investors can always withdraw
-    ///      revenue accrued before campaign finalization
-    /// @dev rewardDebt is updated before transfer following CEI pattern
+    /// @dev Always callable outside FUNDING to prevent locked rewards
+    /// @dev CEI pattern enforced
     function claimRevenue() external nonReentrant {
         if (state == State.FUNDING) revert NotActive();
 
@@ -302,9 +270,7 @@ contract VenueFi is ReentrancyGuard {
                         FUNCTION WITHDRAW OPERATOR FEES()
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Withdraw all accrued operator fees
-    /// @dev Callable in both ACTIVE and ENDED so operator can always withdraw
-    ///      fees accrued before campaign finalization
+    /// @dev Fees are accumulated at deposit time, not claim time
     function withdrawOperatorFees() external nonReentrant {
         if (msg.sender != operator) revert NotOperator();
 
@@ -323,9 +289,7 @@ contract VenueFi is ReentrancyGuard {
                         FUNCTION WITHDRAW CAPITAL()
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Withdraw all capital
-    /// @dev Only callable by the operator while ACTIVE
-    /// @dev Trust-based model — operator is assumed to deploy capital responsibly
+    /// @dev Trust-based: operator controls capital deployment
     function withdrawCapital() external nonReentrant {
         if (msg.sender != operator) revert NotOperator();
         if (state != State.ACTIVE) revert NotActive();
@@ -345,16 +309,12 @@ contract VenueFi is ReentrancyGuard {
                         FUNCTION FINALIZE CAMPAIGN()
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Finalize the operating campaign, blocking new revenue deposits
-    /// @dev Operator can call after endTime. Anyone can call after endTime
-    ///      to prevent the contract from being stuck if operator disappears.
-    /// @dev Transitions state from ACTIVE to ENDED
-    /// @dev claimRevenue and withdrawOperatorFees remain callable after finalization
-   function finalizeCampaign() external {
-    if (state != State.ACTIVE) revert NotActive();
-    if (block.timestamp < endTime) revert CampaignNotEnded();
+    /// @dev Permissionless after endTime to avoid stuck ACTIVE state
+    function finalizeCampaign() external {
+        if (state != State.ACTIVE) revert NotActive();
+        if (block.timestamp < endTime) revert CampaignNotEnded();
 
-    state = State.ENDED;
-    emit StateChanged(State.ENDED);
-}
+        state = State.ENDED;
+        emit StateChanged(State.ENDED);
+    }
 }
