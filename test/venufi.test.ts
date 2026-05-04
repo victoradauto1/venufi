@@ -42,13 +42,25 @@ describe("VenueFi", function () {
     });
 
     it("should revert InvalidFeePercentage if fee > 100", async function () {
-  const [owner] = await ethers.getSigners();
-  const VenueFi = await ethers.getContractFactory("VenueFi");
-  const venue = await VenueFi.deploy(3600, 31536000, ethers.parseEther("1"), owner.address, 10n);
-  await expect(
-    VenueFi.deploy(3600, 31536000, ethers.parseEther("1"), owner.address, 101n)
-  ).to.be.revertedWithCustomError(venue, "InvalidFeePercentage");
-});
+      const [owner] = await ethers.getSigners();
+      const VenueFi = await ethers.getContractFactory("VenueFi");
+      const venue = await VenueFi.deploy(
+        3600,
+        31536000,
+        ethers.parseEther("1"),
+        owner.address,
+        10n,
+      );
+      await expect(
+        VenueFi.deploy(
+          3600,
+          31536000,
+          ethers.parseEther("1"),
+          owner.address,
+          101n,
+        ),
+      ).to.be.revertedWithCustomError(venue, "InvalidFeePercentage");
+    });
   });
 
   describe("Investing", function () {
@@ -230,7 +242,13 @@ describe("VenueFi", function () {
     it("should revert TransferFailed if ETH transfer fails", async function () {
       const VenueFi = await ethers.getContractFactory("VenueFi");
       const [owner] = await ethers.getSigners();
-      const venue2 = await VenueFi.deploy(3600, 31536000, ethers.parseEther("5"), owner.address, 10n);
+      const venue2 = await VenueFi.deploy(
+        3600,
+        31536000,
+        ethers.parseEther("5"),
+        owner.address,
+        10n,
+      );
       await venue2.waitForDeployment();
 
       const RejectEther = await ethers.getContractFactory("RejectEther");
@@ -331,14 +349,15 @@ describe("VenueFi", function () {
       const [owner] = await ethers.getSigners();
       const Harness = await ethers.getContractFactory("VenueFiHarness");
       const harness = await Harness.deploy(
-  3600,
-  31536000,       // operating duration
-  ethers.parseEther("1"),
-  owner.address,
-  10n,
-);
+        3600,
+        31536000,
+        ethers.parseEther("1"),
+        owner.address,
+        10n,
+      );
       await harness.waitForDeployment();
       await harness.forceActive();
+      await harness.forceEndTime(ethers.MaxUint256); // endTime far in the future
       await expect(
         harness
           .connect(owner)
@@ -413,12 +432,12 @@ describe("VenueFi", function () {
       const [owner, user1] = await ethers.getSigners();
       const Harness = await ethers.getContractFactory("VenueFiHarness");
       const harness = await Harness.deploy(
-  3600,
-  31536000,       // operating duration
-  ethers.parseEther("1"),
-  owner.address,
-  10n,
-);
+        3600,
+        31536000, // operating duration
+        ethers.parseEther("1"),
+        owner.address,
+        10n,
+      );
       await harness.waitForDeployment();
       await harness.connect(user1).invest({ value: ethers.parseEther("1.1") });
       await harness.finalizeFunding();
@@ -545,7 +564,13 @@ describe("VenueFi", function () {
     it("should revert TransferFailed if ETH transfer fails on claim", async function () {
       const VenueFi = await ethers.getContractFactory("VenueFi");
       const [owner] = await ethers.getSigners();
-      const venue2 = await VenueFi.deploy(3600, 31536000, ethers.parseEther("0.05"), owner.address, 10n);
+      const venue2 = await VenueFi.deploy(
+        3600,
+        31536000,
+        ethers.parseEther("0.05"),
+        owner.address,
+        10n,
+      );
       await venue2.waitForDeployment();
 
       const RejectEther = await ethers.getContractFactory("RejectEther");
@@ -660,7 +685,13 @@ describe("VenueFi", function () {
       const fakeOperator = await RejectEther.deploy(ethers.ZeroAddress);
       await fakeOperator.waitForDeployment();
 
-      const venue2 = await VenueFi.deploy(3600, 31536000, ethers.parseEther("0.5"), await fakeOperator.getAddress(), 10n);
+      const venue2 = await VenueFi.deploy(
+        3600,
+        31536000,
+        ethers.parseEther("0.5"),
+        await fakeOperator.getAddress(),
+        10n,
+      );
       await venue2.waitForDeployment();
 
       await fakeOperator.setTarget(await venue2.getAddress());
@@ -699,12 +730,12 @@ describe("VenueFi", function () {
       const [owner] = await ethers.getSigners();
       const Harness = await ethers.getContractFactory("VenueFiHarness");
       const harness = await Harness.deploy(
-  3600,
-  31536000,       // operating duration
-  ethers.parseEther("1"),
-  owner.address,
-  10n,
-);
+        3600,
+        31536000, // operating duration
+        ethers.parseEther("1"),
+        owner.address,
+        10n,
+      );
       await harness.waitForDeployment();
       await harness.forceActive();
       await expect(
@@ -753,7 +784,13 @@ describe("VenueFi", function () {
       const fakeOperator = await RejectEther.deploy(ethers.ZeroAddress);
       await fakeOperator.waitForDeployment();
 
-      const venue2 = await VenueFi.deploy(3600, 31536000, ethers.parseEther("0.5"), await fakeOperator.getAddress(), 10n);
+      const venue2 = await VenueFi.deploy(
+        3600,
+        31536000,
+        ethers.parseEther("0.5"),
+        await fakeOperator.getAddress(),
+        10n,
+      );
       await venue2.waitForDeployment();
 
       await fakeOperator.setTarget(await venue2.getAddress());
