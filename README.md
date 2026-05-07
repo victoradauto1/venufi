@@ -2,6 +2,8 @@
 
 VenueFi is a Real World Asset (RWA) revenue sharing protocol that allows operators to raise capital from investors, deploy it into a real-world venue or business, and distribute revenue proportionally back to investors on-chain.
 
+VenueFi supports multiple independent venue campaigns through the VenueFactory contract.
+
 ---
 
 ## How It Works
@@ -143,7 +145,7 @@ All external calls follow the Checks-Effects-Interactions (CEI) pattern.
 
 ---
 
-## Deployment Parameters
+## Venue Deployment Parameters
 
 ```solidity
 constructor(
@@ -154,6 +156,50 @@ constructor(
     uint256 _operatorFeePercentage
 )
 ```
+
+---
+
+## Lifecycle Simulation
+
+The protocol lifecycle was simulated end-to-end using Hardhat scripts, covering funding, activation, capital withdrawal, revenue deposits, investor claims, and campaign finalization.
+
+### Funding Phase
+
+Shows investors funding the venue and reaching the funding goal.
+
+![Funding Phase](docs/images/Funding.png)
+
+---
+
+### Revenue Deposits
+
+Shows operator revenue deposits and fee distribution.
+
+![Revenue Deposits](docs/images/Deposits.png)
+
+---
+
+### Revenue Claims
+
+Shows proportional revenue claims by investors according to their shares.
+
+![Revenue Claims](docs/images/Claims.png)
+
+---
+
+### Campaign Finalization
+
+Shows the protocol transitioning from ACTIVE to ENDED after the operating period.
+
+![Campaign Finalization](docs/images/Finalization.png)
+
+---
+
+### Final Summary
+
+Shows the final accounting state of the protocol after full lifecycle execution.
+
+![Final Summary](docs/images/Final_summary.png)
 
 ---
 
