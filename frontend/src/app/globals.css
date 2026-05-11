@@ -1,26 +1,75 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* ── Surfaces ── */
+  --background: #F6F1E8;
+  --surface: #EFE7DA;
+  --surface-raised: #E8DFD0;
+  --foreground: #1E1E1B;
+
+  /* ── Borders ── */
+  --border: #D8CBB8;
+  --border-subtle: #E2D8C8;
+
+  /* ── Text ── */
+  --text-primary: #1E1E1B;
+  --text-secondary: #6E6A63;
+  --text-tertiary: #9A9590;
+
+  /* ── Accent: Muted Gold ── */
+  --accent: #B79B6C;
+  --accent-hover: #A68B5E;
+  --accent-muted: rgba(183, 155, 108, 0.15);
+
+  /* ── Buttons ── */
+  --btn-bg: #1E1E1B;
+  --btn-text: #F6F1E8;
+  --btn-hover: #3A3A35;
+
+  /* ── Status ── */
+  --success: #B79B6C;
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-border: var(--border);
+  --color-border-subtle: var(--border-subtle);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-muted: var(--accent-muted);
+  --color-btn-bg: var(--btn-bg);
+  --color-btn-text: var(--btn-text);
+  --color-btn-hover: var(--btn-hover);
+  --color-success: var(--success);
+  --font-serif: var(--font-cormorant);
+  --font-sans: var(--font-inter);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+*,
+*::before,
+*::after {
+  border-color: var(--border-subtle);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+::selection {
+  background-color: rgba(183, 155, 108, 0.25);
+  color: #1E1E1B;
 }
