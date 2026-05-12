@@ -8,21 +8,21 @@ export default function Home() {
     <div className="flex flex-col flex-1">
       {/* ─── Hero ─── */}
       <section className="flex flex-col items-center justify-center text-center px-6 pt-44 pb-36">
-        <span className="inline-block text-[11px] font-normal tracking-[0.3em] uppercase text-text-secondary mb-6 font-sans">
+        <span className="inline-block text-[13px] font-normal tracking-[0.3em] uppercase text-text-secondary mb-6 font-sans">
           Revenue-Sharing Infrastructure
         </span>
 
-        <h1 className="text-5xl sm:text-6xl font-light tracking-[-0.02em] text-text-primary leading-[1.1] font-serif">
+        <h1 className="text-6xl sm:text-7xl font-light tracking-[-0.02em] text-text-primary leading-[1.1] font-serif">
           VenueFi
         </h1>
 
-        <p className="mt-6 max-w-md text-[15px] leading-[1.8] text-text-secondary font-sans font-light">
+        <p className="mt-6 max-w-lg text-[17px] leading-[1.8] text-text-secondary font-sans font-light">
           Real World Asset revenue-sharing infrastructure for real-world venues.
         </p>
 
         <button
           id="connect-wallet-btn"
-          className="mt-12 inline-flex items-center gap-2.5 rounded-sm bg-btn-bg px-7 py-3 text-[13px] font-normal text-btn-text tracking-wide transition-colors duration-200 hover:bg-btn-hover cursor-pointer font-sans"
+          className="mt-12 inline-flex items-center gap-2.5 rounded-sm bg-btn-bg px-8 py-3.5 text-[15px] font-normal text-btn-text tracking-wide transition-colors duration-200 hover:bg-btn-hover cursor-pointer font-sans"
         >
           <WalletIcon />
           Connect Wallet
@@ -31,12 +31,12 @@ export default function Home() {
 
       {/* ─── Venue Overview ─── */}
       <section className="flex justify-center px-6 pb-32">
-        <div className="w-full max-w-sm rounded-sm border border-border bg-surface p-8 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
+        <div className="w-full max-w-md rounded-sm border border-border bg-surface p-10 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
           <div className="flex items-center justify-between mb-8">
-            <h2 className="text-[17px] font-light text-text-primary font-serif tracking-wide">
+            <h2 className="text-[21px] font-light text-text-primary font-serif tracking-wide">
               Historic Cultural Venue
             </h2>
-            <span className="inline-flex items-center gap-1.5 rounded-sm bg-accent-muted px-3 py-1 text-[10px] font-normal tracking-[0.15em] uppercase text-accent font-sans">
+            <span className="inline-flex items-center gap-1.5 rounded-sm bg-accent-muted px-3.5 py-1.5 text-[12px] font-medium tracking-[0.15em] uppercase text-accent font-sans">
               <span className="h-1.5 w-1.5 rounded-full bg-accent" />
               ACTIVE
             </span>
@@ -53,7 +53,7 @@ export default function Home() {
               style={{ width: "100%" }}
             />
           </div>
-          <p className="mt-3 text-right text-[11px] text-text-tertiary font-sans tracking-wide">
+          <p className="mt-3 text-right text-[13px] text-text-tertiary font-sans tracking-wide">
             100% funded
           </p>
         </div>
@@ -61,7 +61,7 @@ export default function Home() {
 
       {/* ─── Lifecycle ─── */}
       <section className="flex flex-col items-center px-6 pb-36">
-        <h3 className="text-[11px] font-normal tracking-[0.3em] uppercase text-text-secondary mb-10 font-sans">
+        <h3 className="text-[13px] font-normal tracking-[0.3em] uppercase text-text-secondary mb-10 font-sans">
           Protocol Lifecycle
         </h3>
 
@@ -70,7 +70,7 @@ export default function Home() {
             <div key={step} className="flex items-center gap-3 sm:gap-4">
               <span
                 className={`
-                  inline-flex items-center rounded-sm px-5 py-2.5 text-[10px] font-normal tracking-[0.2em] uppercase font-sans
+                  inline-flex items-center rounded-sm px-6 py-3 text-[13px] font-medium tracking-[0.2em] uppercase font-sans
                   ${
                     step === currentStep
                       ? "bg-accent-muted text-accent border border-accent/30"
@@ -105,8 +105,8 @@ export default function Home() {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-[11px] text-text-tertiary mb-2 font-sans tracking-wide uppercase">{label}</p>
-      <p className="text-lg font-light text-text-primary font-serif tracking-tight">
+      <p className="text-[13px] text-text-tertiary mb-2 font-sans tracking-wide uppercase">{label}</p>
+      <p className="text-xl font-light text-text-primary font-serif tracking-tight">
         {value}
       </p>
     </div>
