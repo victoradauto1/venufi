@@ -22,9 +22,9 @@
   --accent-muted: rgba(183, 155, 108, 0.15);
 
   /* ── Buttons ── */
-  --btn-bg: #1E1E1B;
+  --btn-bg: #6B4C9A;
   --btn-text: #F6F1E8;
-  --btn-hover: #3A3A35;
+  --btn-hover: #5A3D87;
 
   /* ── Status ── */
   --success: #B79B6C;
@@ -72,4 +72,17 @@ html {
 ::selection {
   background-color: rgba(183, 155, 108, 0.25);
   color: #1E1E1B;
+}
+
+@keyframes pulse-glow {
+  0%   { transform: scale(1); }
+  8%   { transform: scale(1.06); }
+  16%  { transform: scale(1); }
+  22%  { transform: scale(1.04); }
+  30%  { transform: scale(1); }
+  100% { transform: scale(1); }
+}
+
+.btn-pulse {
+  animation: pulse-glow 2s ease-in-out infinite;
 }
