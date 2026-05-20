@@ -18,12 +18,12 @@ const config: HardhatUserConfig = {
     artifacts: "./artifacts",
   },
   networks: {
-    baseSepolia: {
-      url: process.env.BASE_SEPOLIA_RPC_URL || "",
-      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    sepolia: {
+      url: process.env.SEPOLIA_RPC_URL || "",
+      accounts: process.env.SEPOLIA_PRIVATE_KEY ? [process.env.SEPOLIA_PRIVATE_KEY] : [],
     },
   },
-  etherscan: { apiKey: { baseSepolia: process.env.BASESCAN_API_KEY || "" } },
+  etherscan: { apiKey: process.env.ETHERSCAN_API_KEY || "" },
   sourcify: { enabled: true },
 };
 export default config;

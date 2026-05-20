@@ -1,4 +1,5 @@
 import Footer from "./components/Footer";
+import { ConnectButton } from "./components/ConnectButton";
 
 export default function Home() {
   const lifecycleSteps = ["FUNDING", "ACTIVE", "ENDED"] as const;
@@ -22,13 +23,9 @@ export default function Home() {
             Real World Asset revenue-sharing infrastructure for real-world venues.
           </p>
 
-          <button
-            id="connect-wallet-btn"
-            className="mt-10 btn-pulse inline-flex items-center gap-2.5 rounded-sm bg-btn-bg px-8 py-3.5 text-[15px] font-normal text-btn-text tracking-wide transition-colors duration-200 hover:bg-btn-hover cursor-pointer font-sans"
-          >
-            <WalletIcon />
-            Connect Wallet
-          </button>
+          <div className="mt-10">
+            <ConnectButton />
+          </div>
         </div>
 
         {/* ─── Venue Overview ─── */}
@@ -114,24 +111,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function WalletIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1" />
-      <path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4" />
-    </svg>
-  );
-}
+
 
 function ChevronRight({ active }: { active: boolean }) {
   return (
