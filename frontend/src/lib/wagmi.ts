@@ -2,7 +2,11 @@
 
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
 import { sepolia } from "wagmi/chains";
-import { http } from "viem";
+import { http, createPublicClient } from "viem";
+
+// ---------------------------------------------------------------------------
+// Wagmi config (used by WagmiProvider / RainbowKit)
+// ---------------------------------------------------------------------------
 
 export const config = getDefaultConfig({
   appName: "VenueFi",
@@ -12,4 +16,13 @@ export const config = getDefaultConfig({
     [sepolia.id]: http(),
   },
   ssr: true,
+});
+
+// ---------------------------------------------------------------------------
+// Standalone viem public client (for direct reads outside React tree)
+// ---------------------------------------------------------------------------
+
+export const publicClient = createPublicClient({
+  chain: sepolia,
+  transport: http(),
 });
