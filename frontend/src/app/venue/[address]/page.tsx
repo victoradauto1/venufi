@@ -1,8 +1,14 @@
-import Footer from "./components/Footer";
-import { ConnectButton } from "./components/ConnectButton";
-import { Stat } from "./components/Stat";
+import Footer from "../../components/Footer";
+import { ConnectButton } from "../../components/ConnectButton";
+import { Stat } from "../../components/Stat";
 
-export default function Home() {
+interface VenuePageProps {
+  params: Promise<{ address: string }>;
+}
+
+export default async function VenuePage({ params }: VenuePageProps) {
+  const { address } = await params;
+
   const lifecycleSteps = ["FUNDING", "ACTIVE", "ENDED"] as const;
   const currentStep = "ACTIVE";
 
@@ -99,9 +105,7 @@ export default function Home() {
   );
 }
 
-
-
-
+/* ── Inline Components ── */
 
 function ChevronRight({ active }: { active: boolean }) {
   return (
