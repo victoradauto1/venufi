@@ -26,7 +26,8 @@ function useVenueWrite(
   if (!venueAddress) {
     throw new Error("Venue address required");
   }
-
+  
+  // TODO: future refactor — replace deprecated writeContractAsync
   const {
     data: txHash,
     writeContractAsync,

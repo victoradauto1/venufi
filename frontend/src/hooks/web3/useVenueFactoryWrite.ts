@@ -22,6 +22,8 @@ export interface CreateVenueParams {
 // ---------------------------------------------------------------------------
 
 export function useCreateVenue() {
+
+  // TODO: future refactor — replace deprecated writeContractAsync
   const {
     data: txHash,
     writeContractAsync,
