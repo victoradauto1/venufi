@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useCallback, useEffect } from "react";
 import type { Address } from "viem";
 import { useAccount } from "wagmi";
 import {
@@ -12,8 +13,18 @@ import {
   VENUE_STATE_LABELS,
   type VenueStateValue,
 } from "@/hooks/web3/useVenue";
-import { formatEth, computeFundingPercent } from "@/lib/format";
+import { useClaimRevenue } from "@/hooks/web3/useVenueWrite";
+import { formatEth } from "@/lib/format";
 import { Stat } from "../../../components/Stat";
+import { TransactionButton } from "@/components/tx/TransactionButton";
+import { TransactionStatus } from "@/components/tx/TransactionStatus";
+import { IDLE_TX_STATE, type TransactionState } from "@/types/transaction";
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const EXPLORER_URL = "https://sepolia.etherscan.io";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -21,6 +32,7 @@ import { Stat } from "../../../components/Stat";
 
 /**
  * Computes the user's share allocation as a percentage of the funding goal.
+ * Uses bigint arithmetic to avoid unsafe Number conversion of large values.
  * Returns a string with 1 decimal place, e.g. "30.0".
  */
 function computeShareAllocation(
@@ -28,9 +40,43 @@ function computeShareAllocation(
   fundingGoal: bigint | undefined,
 ): string {
   if (userShares == null || fundingGoal == null) return "0.0";
-  if (fundingGoal === BigInt(0)) return "0.0";
-  const percent = Number((userShares * BigInt(10000)) / fundingGoal) / 100;
-  return percent.toFixed(1);
+  if (fundingGoal === 0n) return "0.0";
+
+  // Scale by 1000 to get one decimal of precision
+  const permille = (userShares * 1000n) / fundingGoal;
+  const whole = permille / 10n;
+  const frac = permille % 10n;
+  return `${whole}.${frac < 0n ? -frac : frac}`;
+}
+
+/**
+ * Converts a wagmi/viem error into a concise, user-friendly message.
+ */
+function humanizeError(err: unknown): string {
+  if (err == null) return "An unknown error occurred.";
+
+  const message =
+    typeof err === "object" && "shortMessage" in err
+      ? String((err as { shortMessage: unknown }).shortMessage)
+      : err instanceof Error
+        ? err.message
+        : String(err);
+
+  // Common patterns
+  if (/user rejected|user denied/i.test(message)) {
+    return "Transaction rejected — you declined the wallet signature.";
+  }
+  if (/insufficient funds/i.test(message)) {
+    return "Insufficient funds — your wallet balance is too low.";
+  }
+  if (/exceeds balance/i.test(message)) {
+    return "Insufficient funds — the amount exceeds your wallet balance.";
+  }
+  // Trim overly long messages
+  if (message.length > 160) {
+    return message.slice(0, 157) + "…";
+  }
+  return message;
 }
 
 // ---------------------------------------------------------------------------
@@ -43,9 +89,9 @@ interface RevenueContentProps {
 
 export function RevenueContent({ venueAddress }: RevenueContentProps) {
   const address = venueAddress as Address;
-  const { address: userAddress } = useAccount();
+  const { address: userAddress, isConnected } = useAccount();
 
-  // ── On-chain reads ──
+  // ── On-chain reads ────────────────────────────────────────────────────
   const { data: stateRaw, isLoading: stateLoading } = useVenueState(address);
   const { data: totalRevenue, isLoading: revenueLoading } = useVenueTotalRevenue(address);
   const { data: pendingRaw, isLoading: pendingLoading } = useVenuePending(address, userAddress);
@@ -55,18 +101,83 @@ export function RevenueContent({ venueAddress }: RevenueContentProps) {
   const isLoading = stateLoading || revenueLoading || goalLoading;
   const isUserLoading = pendingLoading || sharesLoading;
 
-  // ── Derived values ──
+  // ── Write hook ────────────────────────────────────────────────────────
+  const {
+    claimRevenue,
+    txHash,
+    isConfirming,
+    isConfirmed,
+    isError,
+    error: writeError,
+    reset,
+  } = useClaimRevenue(address);
+
+  // ── Transaction UX state ──────────────────────────────────────────────
+  //
+  // Bridge wagmi's reactive booleans into a single TransactionState that
+  // drives the reusable TransactionStatus + TransactionButton components.
+  //
+  // 5-step pattern (mirrors InvestContent.tsx):
+  //   1. Destructure write hook (txHash, isConfirming, isConfirmed, isError, error, reset)
+  //   2. useState<TransactionState>(IDLE_TX_STATE)
+  //   3. useEffect to sync wagmi → TransactionState
+  //   4. handleClaim sets pendingSignature, calls write, catches to error
+  //   5. success rendering via TransactionStatus
+  //
+  const [tx, setTx] = useState<TransactionState>(IDLE_TX_STATE);
+
+  useEffect(() => {
+    if (isConfirmed && txHash) {
+      setTx({ status: "success", hash: txHash });
+    } else if (isConfirming && txHash) {
+      setTx({ status: "confirming", hash: txHash });
+    } else if (isError) {
+      setTx({
+        status: "error",
+        hash: txHash ?? undefined,
+        error: humanizeError(writeError),
+      });
+    }
+  }, [isConfirmed, isConfirming, isError, txHash, writeError]);
+
+  // ── Derived values ────────────────────────────────────────────────────
   const venueState = (stateRaw ?? VenueState.FUNDING) as VenueStateValue;
   const stateLabel = VENUE_STATE_LABELS[venueState]?.toUpperCase() ?? "UNKNOWN";
 
   const totalRevenueEth = totalRevenue != null ? formatEth(totalRevenue as bigint) : "—";
   const pendingEth = pendingRaw != null ? formatEth(pendingRaw as bigint) : "0";
+  const pendingWei = (pendingRaw as bigint | undefined) ?? 0n;
+  const hasPending = pendingWei > 0n;
   const shareAllocation = computeShareAllocation(
     userShares as bigint | undefined,
     fundingGoal as bigint | undefined,
   );
 
-  // ── Loading skeleton ──
+  // ── Validation ────────────────────────────────────────────────────────
+  const isActivePhase = venueState === VenueState.ACTIVE;
+  const isTxInProgress = tx.status === "pendingSignature" || tx.status === "confirming";
+  const canClaim = isConnected && hasPending && isActivePhase && !isTxInProgress;
+
+  // ── Handlers ──────────────────────────────────────────────────────────
+  const handleClaim = useCallback(async () => {
+    if (!canClaim) return;
+
+    // Reset any previous state
+    reset();
+    setTx({ status: "pendingSignature" });
+
+    try {
+      await claimRevenue();
+      // wagmi hooks will drive the rest via the useEffect sync above
+    } catch (err: unknown) {
+      setTx({
+        status: "error",
+        error: humanizeError(err),
+      });
+    }
+  }, [canClaim, claimRevenue, reset]);
+
+  // ── Loading skeleton ──────────────────────────────────────────────────
   if (isLoading) {
     return (
       <section className="flex flex-col lg:flex-row items-start justify-center gap-10 lg:gap-14 px-6 pb-24 max-w-5xl mx-auto w-full">
@@ -110,7 +221,7 @@ export function RevenueContent({ venueAddress }: RevenueContentProps) {
     );
   }
 
-  // ── Loaded state ──
+  // ── Loaded state ──────────────────────────────────────────────────────
   return (
     <section className="flex flex-col lg:flex-row items-start justify-center gap-10 lg:gap-14 px-6 pb-24 max-w-5xl mx-auto w-full">
       {/* ─── Venue Info Card ─── */}
@@ -187,18 +298,32 @@ export function RevenueContent({ venueAddress }: RevenueContentProps) {
               ETH
             </span>
           </div>
-          <button
-            disabled
-            className="w-full inline-flex items-center justify-center gap-2.5 rounded-sm bg-[#1E1E1B] px-8 py-3.5 text-[15px] font-normal text-[#F6F1E8] tracking-wide transition-colors duration-200 cursor-not-allowed opacity-60 font-sans"
+
+          <TransactionButton
+            onClick={handleClaim}
+            disabled={!canClaim}
+            loading={isTxInProgress}
           >
-            Claim Revenue
-          </button>
-          <p className="mt-2 text-[12px] text-text-tertiary/60 font-sans italic text-center">
-            Write integration coming soon
-          </p>
-          <p className="mt-3 text-[13px] text-text-tertiary font-sans font-light text-center">
-            Revenue is distributed proportionally according to your ownership share.
-          </p>
+            <ClaimIcon />
+            {isTxInProgress ? "Claiming…" : "Claim Revenue"}
+          </TransactionButton>
+
+          <TransactionStatus state={tx} explorerUrl={EXPLORER_URL} />
+
+          {/* Contextual helper text */}
+          {!isConnected ? (
+            <p className="mt-3 text-[13px] text-amber-500/80 font-sans font-light text-center">
+              Connect your wallet to claim revenue.
+            </p>
+          ) : !isActivePhase ? (
+            <p className="mt-3 text-[13px] text-text-tertiary/80 font-sans font-light text-center">
+              Revenue claims are only available while the venue is active.
+            </p>
+          ) : (
+            <p className="mt-3 text-[13px] text-text-tertiary font-sans font-light text-center">
+              Revenue is distributed proportionally according to your ownership share.
+            </p>
+          )}
         </div>
 
         {/* ─── Revenue History ─── */}
@@ -241,6 +366,24 @@ function InfoIcon() {
       <circle cx="12" cy="12" r="10" />
       <line x1="12" y1="16" x2="12" y2="12" />
       <line x1="12" y1="8" x2="12.01" y2="8" />
+    </svg>
+  );
+}
+
+function ClaimIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="20 6 9 17 4 12" />
     </svg>
   );
 }
