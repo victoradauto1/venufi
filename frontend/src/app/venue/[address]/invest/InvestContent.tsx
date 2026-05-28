@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { Address } from "viem";
+import { parseEther } from "viem";
 import { useAccount } from "wagmi";
 import {
   useVenueState,
@@ -12,8 +13,18 @@ import {
   VENUE_STATE_LABELS,
   type VenueStateValue,
 } from "@/hooks/web3/useVenue";
+import { useInvest } from "@/hooks/web3/useVenueWrite";
 import { formatEth, computeFundingPercent } from "@/lib/format";
 import { Stat } from "../../../components/Stat";
+import { TransactionButton } from "@/components/tx/TransactionButton";
+import { TransactionStatus } from "@/components/tx/TransactionStatus";
+import { IDLE_TX_STATE, type TransactionState } from "@/types/transaction";
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const EXPLORER_URL = "https://sepolia.etherscan.io";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -22,26 +33,80 @@ import { Stat } from "../../../components/Stat";
 /**
  * Computes the share percentage the user would receive for a given ETH input.
  * share% = (inputWei / (currentRaised + inputWei)) * 100
- * Returns a string with 1 decimal place.
+ *
+ * Uses pure bigint arithmetic to avoid unsafe Number conversion of large values.
+ * Returns a string with 1 decimal place (e.g. "12.3").
  */
 function computeSharePreview(
-  inputEth: number,
+  inputEth: string,
   currentRaised: bigint | undefined,
   fundingGoal: bigint | undefined,
 ): string {
-  if (inputEth <= 0 || fundingGoal == null || currentRaised == null) return "0.0";
+  if (fundingGoal == null || currentRaised == null) return "0.0";
 
-  // Convert input to wei-scale bigint (multiply by 1e18)
-  // We use Number math here since the user input is already a float
-  const goalNum = Number(fundingGoal);
-  if (goalNum === 0) return "0.0";
+  // Parse the user input string directly to wei — avoids float intermediaries
+  const trimmed = inputEth.trim();
+  if (trimmed === "" || trimmed === "0") return "0.0";
 
-  const inputWei = inputEth * 1e18;
-  const raisedNum = Number(currentRaised);
-  const totalAfter = raisedNum + inputWei;
+  let inputWei: bigint;
+  try {
+    inputWei = parseEther(trimmed);
+  } catch {
+    return "0.0";
+  }
 
-  if (totalAfter === 0) return "0.0";
-  return ((inputWei / totalAfter) * 100).toFixed(1);
+  if (inputWei <= 0n) return "0.0";
+
+  const totalAfter = currentRaised + inputWei;
+  if (totalAfter === 0n) return "0.0";
+
+  // Scale by 1000 to get one decimal of precision: (input * 1000) / total
+  // e.g. 12.3% → permille = 123n
+  const permille = (inputWei * 1000n) / totalAfter;
+
+  // Format: integer part + "." + single decimal digit
+  const whole = permille / 10n;
+  const frac = permille % 10n;
+  return `${whole}.${frac < 0n ? -frac : frac}`;
+}
+
+/**
+ * Returns true when ethAmount represents a valid, positive number.
+ */
+function isValidEthAmount(ethAmount: string): boolean {
+  if (ethAmount.trim() === "") return false;
+  const n = Number(ethAmount);
+  return Number.isFinite(n) && n > 0;
+}
+
+/**
+ * Converts a wagmi/viem error into a concise, user-friendly message.
+ */
+function humanizeError(err: unknown): string {
+  if (err == null) return "An unknown error occurred.";
+
+  const message =
+    typeof err === "object" && "shortMessage" in err
+      ? String((err as { shortMessage: unknown }).shortMessage)
+      : err instanceof Error
+        ? err.message
+        : String(err);
+
+  // Common patterns
+  if (/user rejected|user denied/i.test(message)) {
+    return "Transaction rejected — you declined the wallet signature.";
+  }
+  if (/insufficient funds/i.test(message)) {
+    return "Insufficient funds — your wallet balance is too low.";
+  }
+  if (/exceeds balance/i.test(message)) {
+    return "Insufficient funds — the amount exceeds your wallet balance.";
+  }
+  // Trim overly long messages
+  if (message.length > 160) {
+    return message.slice(0, 157) + "…";
+  }
+  return message;
 }
 
 // ---------------------------------------------------------------------------
@@ -54,9 +119,9 @@ interface InvestContentProps {
 
 export function InvestContent({ venueAddress }: InvestContentProps) {
   const address = venueAddress as Address;
-  const { address: userAddress } = useAccount();
+  const { address: userAddress, isConnected } = useAccount();
 
-  // ── On-chain reads ──
+  // ── On-chain reads ────────────────────────────────────────────────────
   const { data: stateRaw, isLoading: stateLoading } = useVenueState(address);
   const { data: fundingGoal, isLoading: goalLoading } = useVenueFundingGoal(address);
   const { data: currentRaised, isLoading: raisedLoading } = useVenueCurrentRaised(address);
@@ -64,7 +129,46 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
 
   const isLoading = stateLoading || goalLoading || raisedLoading;
 
-  // ── Derived values ──
+  // ── Write hook ────────────────────────────────────────────────────────
+  const {
+    invest,
+    txHash,
+    isConfirming,
+    isConfirmed,
+    isError,
+    error: writeError,
+    reset,
+  } = useInvest(address);
+
+  // ── Transaction UX state ──────────────────────────────────────────────
+  //
+  // Bridge wagmi's reactive booleans into a single TransactionState that
+  // drives the reusable TransactionStatus + TransactionButton components.
+  //
+  // This same pattern should be replicated for every future write page:
+  //   1. Destructure the write hook (txHash, isConfirming, isConfirmed, isError, error, reset)
+  //   2. useState<TransactionState>(IDLE_TX_STATE)
+  //   3. useEffect to sync wagmi → TransactionState
+  //   4. handleX sets pendingSignature, calls write, catches to error
+  //   5. useEffect to clear input on success
+  //
+  const [tx, setTx] = useState<TransactionState>(IDLE_TX_STATE);
+
+  useEffect(() => {
+    if (isConfirmed && txHash) {
+      setTx({ status: "success", hash: txHash });
+    } else if (isConfirming && txHash) {
+      setTx({ status: "confirming", hash: txHash });
+    } else if (isError) {
+      setTx({
+        status: "error",
+        hash: txHash ?? undefined,
+        error: humanizeError(writeError),
+      });
+    }
+  }, [isConfirmed, isConfirming, isError, txHash, writeError]);
+
+  // ── Derived values ────────────────────────────────────────────────────
   const venueState = (stateRaw ?? VenueState.FUNDING) as VenueStateValue;
   const stateLabel = VENUE_STATE_LABELS[venueState]?.toUpperCase() ?? "UNKNOWN";
 
@@ -77,16 +181,49 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
       ? computeFundingPercent(currentRaised as bigint, fundingGoal as bigint)
       : 0;
 
-  // ── Investment form state ──
+  // ── Investment form state ─────────────────────────────────────────────
   const [ethAmount, setEthAmount] = useState("");
   const parsed = parseFloat(ethAmount) || 0;
   const sharePercent = computeSharePreview(
-    parsed,
+    ethAmount,
     currentRaised as bigint | undefined,
     fundingGoal as bigint | undefined,
   );
 
-  // ── Loading skeleton ──
+  // ── Validation ────────────────────────────────────────────────────────
+  const isValidAmount = isValidEthAmount(ethAmount);
+  const isFundingPhase = venueState === VenueState.FUNDING;
+  const isTxInProgress = tx.status === "pendingSignature" || tx.status === "confirming";
+  const canInvest = isConnected && isValidAmount && isFundingPhase && !isTxInProgress;
+
+  // ── Handlers ──────────────────────────────────────────────────────────
+  const handleInvest = useCallback(async () => {
+    if (!isValidAmount) return;
+
+    // Reset any previous state
+    reset();
+    setTx({ status: "pendingSignature" });
+
+    try {
+      const value = parseEther(ethAmount);
+      await invest(value);
+      // wagmi hooks will drive the rest via the useEffect sync above
+    } catch (err: unknown) {
+      setTx({
+        status: "error",
+        error: humanizeError(err),
+      });
+    }
+  }, [ethAmount, isValidAmount, invest, reset]);
+
+  // Clear input after success
+  useEffect(() => {
+    if (tx.status === "success") {
+      setEthAmount("");
+    }
+  }, [tx.status]);
+
+  // ── Loading skeleton ──────────────────────────────────────────────────
   if (isLoading) {
     return (
       <section className="flex flex-col lg:flex-row items-start justify-center gap-10 lg:gap-14 px-6 pb-24 max-w-5xl mx-auto w-full">
@@ -128,7 +265,7 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
     );
   }
 
-  // ── Loaded state ──
+  // ── Loaded state ──────────────────────────────────────────────────────
   return (
     <section className="flex flex-col lg:flex-row items-start justify-center gap-10 lg:gap-14 px-6 pb-24 max-w-5xl mx-auto w-full">
       {/* ─── Venue Information Card ─── */}
@@ -204,23 +341,37 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
             value={ethAmount}
             onChange={(e) => setEthAmount(e.target.value)}
             placeholder="Enter ETH amount"
-            className="w-full rounded-sm border border-border bg-background px-5 py-3.5 text-[15px] text-text-primary font-sans placeholder:text-text-tertiary/60 focus:outline-none focus:border-accent transition-colors duration-200"
+            disabled={isTxInProgress}
+            className="w-full rounded-sm border border-border bg-background px-5 py-3.5 text-[15px] text-text-primary font-sans placeholder:text-text-tertiary/60 focus:outline-none focus:border-accent transition-colors duration-200 disabled:opacity-60"
           />
-          <p className="mt-2.5 text-[13px] text-text-tertiary font-sans font-light">
-            Shares are proportional to invested ETH.
-          </p>
 
-          <button
-            id="invest-btn"
-            disabled
-            className="mt-7 w-full inline-flex items-center justify-center gap-2.5 rounded-sm bg-[#1E1E1B] px-8 py-3.5 text-[15px] font-normal text-[#F6F1E8] tracking-wide transition-colors duration-200 hover:bg-[#3A3A35] cursor-not-allowed opacity-60 font-sans"
-          >
-            <InvestIcon />
-            Invest
-          </button>
-          <p className="mt-2 text-[12px] text-text-tertiary/60 font-sans italic text-center">
-            Write integration coming soon
-          </p>
+          {/* Contextual helper text */}
+          {!isConnected ? (
+            <p className="mt-2.5 text-[13px] text-amber-500/80 font-sans font-light">
+              Connect your wallet to invest.
+            </p>
+          ) : !isFundingPhase ? (
+            <p className="mt-2.5 text-[13px] text-text-tertiary/80 font-sans font-light">
+              This venue is no longer accepting investments.
+            </p>
+          ) : (
+            <p className="mt-2.5 text-[13px] text-text-tertiary font-sans font-light">
+              Shares are proportional to invested ETH.
+            </p>
+          )}
+
+          <div className="mt-7">
+            <TransactionButton
+              onClick={handleInvest}
+              disabled={!canInvest}
+              loading={isTxInProgress}
+            >
+              <InvestIcon />
+              {isTxInProgress ? "Investing…" : "Invest"}
+            </TransactionButton>
+          </div>
+
+          <TransactionStatus state={tx} explorerUrl={EXPLORER_URL} />
         </div>
 
         {/* ─── Transaction Preview ─── */}
