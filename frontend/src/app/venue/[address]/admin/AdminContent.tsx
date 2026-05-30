@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { Address } from "viem";
+import { parseEther } from "viem";
 import { useAccount } from "wagmi";
 import {
   useVenueState,
@@ -13,8 +14,18 @@ import {
   VENUE_STATE_LABELS,
   type VenueStateValue,
 } from "@/hooks/web3/useVenue";
+import { useDepositRevenue } from "@/hooks/web3/useVenueWrite";
 import { formatEth } from "@/lib/format";
 import { Stat } from "../../../components/Stat";
+import { TransactionButton } from "@/components/tx/TransactionButton";
+import { TransactionStatus } from "@/components/tx/TransactionStatus";
+import { IDLE_TX_STATE, type TransactionState } from "@/types/transaction";
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const EXPLORER_URL = "https://sepolia.etherscan.io";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -51,6 +62,45 @@ function truncateAddress(addr: string): string {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
+/**
+ * Returns true when ethAmount represents a valid, positive number.
+ */
+function isValidEthAmount(ethAmount: string): boolean {
+  if (ethAmount.trim() === "") return false;
+  const n = Number(ethAmount);
+  return Number.isFinite(n) && n > 0;
+}
+
+/**
+ * Converts a wagmi/viem error into a concise, user-friendly message.
+ */
+function humanizeError(err: unknown): string {
+  if (err == null) return "An unknown error occurred.";
+
+  const message =
+    typeof err === "object" && "shortMessage" in err
+      ? String((err as { shortMessage: unknown }).shortMessage)
+      : err instanceof Error
+        ? err.message
+        : String(err);
+
+  // Common patterns
+  if (/user rejected|user denied/i.test(message)) {
+    return "Transaction rejected — you declined the wallet signature.";
+  }
+  if (/insufficient funds/i.test(message)) {
+    return "Insufficient funds — your wallet balance is too low.";
+  }
+  if (/exceeds balance/i.test(message)) {
+    return "Insufficient funds — the amount exceeds your wallet balance.";
+  }
+  // Trim overly long messages
+  if (message.length > 160) {
+    return message.slice(0, 157) + "…";
+  }
+  return message;
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -61,9 +111,9 @@ interface AdminContentProps {
 
 export function AdminContent({ venueAddress }: AdminContentProps) {
   const address = venueAddress as Address;
-  const { address: userAddress } = useAccount();
+  const { address: userAddress, isConnected } = useAccount();
 
-  // ── On-chain reads ──
+  // ── On-chain reads ────────────────────────────────────────────────────
   const { data: stateRaw, isLoading: stateLoading } = useVenueState(address);
   const { data: fundingGoal, isLoading: goalLoading } = useVenueFundingGoal(address);
   const { data: currentRaised, isLoading: raisedLoading } = useVenueCurrentRaised(address);
@@ -73,7 +123,46 @@ export function AdminContent({ venueAddress }: AdminContentProps) {
   const isLoading =
     stateLoading || goalLoading || raisedLoading || operatorLoading || endTimeLoading;
 
-  // ── Derived values ──
+  // ── Write hook ────────────────────────────────────────────────────────
+  const {
+    depositRevenue,
+    txHash,
+    isConfirming,
+    isConfirmed,
+    isError,
+    error: writeError,
+    reset,
+  } = useDepositRevenue(address);
+
+  // ── Transaction UX state ──────────────────────────────────────────────
+  //
+  // Bridge wagmi's reactive booleans into a single TransactionState that
+  // drives the reusable TransactionStatus + TransactionButton components.
+  //
+  // 5-step pattern (mirrors InvestContent.tsx / RevenueContent.tsx):
+  //   1. Destructure write hook (txHash, isConfirming, isConfirmed, isError, error, reset)
+  //   2. useState<TransactionState>(IDLE_TX_STATE)
+  //   3. useEffect to sync wagmi → TransactionState
+  //   4. handleDeposit sets pendingSignature, calls write, catches to error
+  //   5. success rendering via TransactionStatus
+  //
+  const [tx, setTx] = useState<TransactionState>(IDLE_TX_STATE);
+
+  useEffect(() => {
+    if (isConfirmed && txHash) {
+      setTx({ status: "success", hash: txHash });
+    } else if (isConfirming && txHash) {
+      setTx({ status: "confirming", hash: txHash });
+    } else if (isError) {
+      setTx({
+        status: "error",
+        hash: txHash ?? undefined,
+        error: humanizeError(writeError),
+      });
+    }
+  }, [isConfirmed, isConfirming, isError, txHash, writeError]);
+
+  // ── Derived values ────────────────────────────────────────────────────
   const venueState = (stateRaw ?? VenueState.FUNDING) as VenueStateValue;
   const stateLabel = VENUE_STATE_LABELS[venueState]?.toUpperCase() ?? "UNKNOWN";
 
@@ -84,16 +173,49 @@ export function AdminContent({ venueAddress }: AdminContentProps) {
   const operatingPeriod =
     endTimeRaw != null ? formatEndTime(endTimeRaw as bigint) : "—";
 
-  // ── Operator gating ──
+  // ── Operator gating ───────────────────────────────────────────────────
   const isOperator =
     !!userAddress &&
     !!operatorAddress &&
     userAddress.toLowerCase() === operatorAddress.toLowerCase();
 
-  // ── Form state ──
+  // ── Form state ────────────────────────────────────────────────────────
   const [revenueAmount, setRevenueAmount] = useState("");
 
-  // ── Loading skeleton ──
+  // ── Validation ────────────────────────────────────────────────────────
+  const isValidAmount = isValidEthAmount(revenueAmount);
+  const isActivePhase = venueState === VenueState.ACTIVE;
+  const isTxInProgress = tx.status === "pendingSignature" || tx.status === "confirming";
+  const canDeposit = isConnected && isOperator && isValidAmount && isActivePhase && !isTxInProgress;
+
+  // ── Handlers ──────────────────────────────────────────────────────────
+  const handleDeposit = useCallback(async () => {
+    if (!isValidAmount) return;
+
+    // Reset any previous state
+    reset();
+    setTx({ status: "pendingSignature" });
+
+    try {
+      const value = parseEther(revenueAmount);
+      await depositRevenue(value);
+      // wagmi hooks will drive the rest via the useEffect sync above
+    } catch (err: unknown) {
+      setTx({
+        status: "error",
+        error: humanizeError(err),
+      });
+    }
+  }, [revenueAmount, isValidAmount, depositRevenue, reset]);
+
+  // Clear input after success
+  useEffect(() => {
+    if (tx.status === "success") {
+      setRevenueAmount("");
+    }
+  }, [tx.status]);
+
+  // ── Loading skeleton ──────────────────────────────────────────────────
   if (isLoading) {
     return (
       <section className="flex flex-col lg:flex-row items-start justify-center gap-10 lg:gap-14 px-6 pb-24 max-w-5xl mx-auto w-full">
@@ -137,7 +259,7 @@ export function AdminContent({ venueAddress }: AdminContentProps) {
     );
   }
 
-  // ── Loaded state ──
+  // ── Loaded state ──────────────────────────────────────────────────────
   return (
     <section className="flex flex-col lg:flex-row items-start justify-center gap-10 lg:gap-14 px-6 pb-24 max-w-5xl mx-auto w-full">
       {/* ─── Venue Info Card ─── */}
@@ -204,7 +326,7 @@ export function AdminContent({ venueAddress }: AdminContentProps) {
 
             <div className="h-px w-full bg-border" />
 
-            {/* Deposit Revenue */}
+            {/* ─── Deposit Revenue (Write-Integrated) ─── */}
             <div className="flex flex-col">
               <label
                 htmlFor="revenue-amount"
@@ -220,17 +342,39 @@ export function AdminContent({ venueAddress }: AdminContentProps) {
                 value={revenueAmount}
                 onChange={(e) => setRevenueAmount(e.target.value)}
                 placeholder="Enter revenue amount"
-                className="w-full rounded-sm border border-border bg-background px-5 py-3.5 text-[15px] text-text-primary font-sans placeholder:text-text-tertiary/60 focus:outline-none focus:border-accent transition-colors duration-200 mb-4"
+                disabled={isTxInProgress}
+                className="w-full rounded-sm border border-border bg-background px-5 py-3.5 text-[15px] text-text-primary font-sans placeholder:text-text-tertiary/60 focus:outline-none focus:border-accent transition-colors duration-200 disabled:opacity-60 mb-4"
               />
-              <button
-                disabled
-                className="w-full inline-flex items-center justify-center gap-2.5 rounded-sm bg-[#1E1E1B] px-8 py-3.5 text-[15px] font-normal text-[#F6F1E8] tracking-wide transition-colors duration-200 cursor-not-allowed opacity-60 font-sans"
+
+              <TransactionButton
+                onClick={handleDeposit}
+                disabled={!canDeposit}
+                loading={isTxInProgress}
               >
-                Deposit Revenue
-              </button>
-              <p className="mt-2.5 text-[13px] text-text-tertiary font-sans font-light">
-                Distributes deposited revenue proportionally to investors.
-              </p>
+                <DepositIcon />
+                {isTxInProgress ? "Depositing…" : "Deposit Revenue"}
+              </TransactionButton>
+
+              <TransactionStatus state={tx} explorerUrl={EXPLORER_URL} />
+
+              {/* Contextual helper text */}
+              {!isConnected ? (
+                <p className="mt-2.5 text-[13px] text-amber-500/80 font-sans font-light">
+                  Connect your wallet to deposit revenue.
+                </p>
+              ) : !isOperator ? (
+                <p className="mt-2.5 text-[13px] text-amber-500/80 font-sans font-light">
+                  Only the venue operator can deposit revenue.
+                </p>
+              ) : !isActivePhase ? (
+                <p className="mt-2.5 text-[13px] text-text-tertiary/80 font-sans font-light">
+                  Revenue deposits are only available while the venue is active.
+                </p>
+              ) : (
+                <p className="mt-2.5 text-[13px] text-text-tertiary font-sans font-light">
+                  Distributes deposited revenue proportionally to investors.
+                </p>
+              )}
             </div>
 
             <div className="h-px w-full bg-border" />
@@ -250,11 +394,11 @@ export function AdminContent({ venueAddress }: AdminContentProps) {
           </div>
         </div>
 
-        {/* Info notice */}
+        {/* Info notice — updated to reflect partial integration */}
         <div className="rounded-sm border border-border bg-surface-raised/50 p-6 flex items-start gap-3">
           <InfoIcon />
           <p className="text-[13px] text-text-secondary font-sans font-light italic leading-relaxed">
-            Write integration coming soon — buttons are disabled.
+            Finalize Funding and Withdraw Fees write integration coming soon.
           </p>
         </div>
       </div>
@@ -283,6 +427,26 @@ function InfoIcon() {
       <circle cx="12" cy="12" r="10" />
       <line x1="12" y1="16" x2="12" y2="12" />
       <line x1="12" y1="8" x2="12.01" y2="8" />
+    </svg>
+  );
+}
+
+function DepositIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <line x1="12" y1="1" x2="12" y2="23" />
+      <polyline points="17 18 12 23 7 18" />
+      <path d="M21 12H3" />
     </svg>
   );
 }
