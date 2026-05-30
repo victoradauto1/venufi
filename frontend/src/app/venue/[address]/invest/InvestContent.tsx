@@ -198,7 +198,7 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
 
   // ── Handlers ──────────────────────────────────────────────────────────
   const handleInvest = useCallback(async () => {
-    if (!isValidAmount) return;
+    if (!canInvest) return;
 
     // Reset any previous state
     reset();
@@ -214,7 +214,7 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
         error: humanizeError(err),
       });
     }
-  }, [ethAmount, isValidAmount, invest, reset]);
+  }, [canInvest, ethAmount, invest, reset]);
 
   // Clear input after success
   useEffect(() => {

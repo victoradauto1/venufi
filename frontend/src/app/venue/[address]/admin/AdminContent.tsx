@@ -190,7 +190,7 @@ export function AdminContent({ venueAddress }: AdminContentProps) {
 
   // ── Handlers ──────────────────────────────────────────────────────────
   const handleDeposit = useCallback(async () => {
-    if (!isValidAmount) return;
+    if (!canDeposit) return;
 
     // Reset any previous state
     reset();
@@ -206,7 +206,7 @@ export function AdminContent({ venueAddress }: AdminContentProps) {
         error: humanizeError(err),
       });
     }
-  }, [revenueAmount, isValidAmount, depositRevenue, reset]);
+  }, [canDeposit, revenueAmount, depositRevenue, reset]);
 
   // Clear input after success
   useEffect(() => {
