@@ -5,6 +5,5 @@
  * Address is dynamic (created via VenueFactory.createVenue), so not exported here.
  */
 
-import VenueFiArtifact from "../../../../blockchain/artifacts/contracts/VenueFi.sol/VenueFi.json";
-
-export const venueFiAbi = VenueFiArtifact.abi;
+import VenueFiArtifact from "../../app/abi/VenueFi.json";
+export const venueFiAbi = VenueFiArtifact;
