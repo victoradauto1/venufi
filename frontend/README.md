@@ -4,7 +4,7 @@
 
 VenueFi is a proof-of-concept RWA protocol that enables real-world venue operators to raise capital through on-chain funding campaigns and distribute revenue proportionally to investors.
 
-This frontend provides an interface for interacting with deployed VenueFi smart contracts on Ethereum Sepolia, including venue discovery, investments, revenue deposits, revenue claims, and lifecycle management.
+This frontend provides an interface for interacting with deployed VenueFi smart contracts on Ethereum Sepolia, including interaction with deployed VenueFi campaigns, investments, revenue deposits, revenue claims, and lifecycle management.
 
 ---
 
@@ -12,18 +12,18 @@ This frontend provides an interface for interacting with deployed VenueFi smart 
 
 ### Technology Stack
 
-- Next.js App Router
-- TypeScript
-- React
-- Tailwind CSS
-- RainbowKit
-- wagmi
-- viem
-- TanStack React Query
+* Next.js App Router
+* TypeScript
+* React
+* Tailwind CSS
+* RainbowKit
+* wagmi
+* viem
+* TanStack React Query
 
 ### Network
 
-- Ethereum Sepolia Testnet
+* Ethereum Sepolia Testnet
 
 ### Provider Stack
 
@@ -35,11 +35,11 @@ WagmiProvider
 
 ### Design Principles
 
-- Server-first architecture using App Router
-- Type-safe smart contract interactions
-- Direct on-chain reads and writes
-- Wallet-aware user experience
-- Separation between presentation and blockchain interaction layers
+* Server-first architecture using App Router
+* Type-safe smart contract interactions
+* Direct on-chain reads and writes
+* Wallet-aware user experience
+* Separation between presentation and blockchain interaction layers
 
 ---
 
@@ -47,33 +47,33 @@ WagmiProvider
 
 ### Venue Dashboard
 
-- Real-time venue state (FUNDING / ACTIVE / ENDED)
-- Funding goal tracking
-- Capital raised tracking
-- Funding progress visualization
-- On-chain data reads
+* Real-time venue state (FUNDING / ACTIVE / ENDED)
+* Funding goal tracking
+* Capital raised tracking
+* Funding progress visualization
+* On-chain data reads
 
 ### Investment System
 
-- ETH investments
-- Share-based ownership accounting
-- Transaction lifecycle feedback
-- Wallet connection and validation
-- Contract write interactions
+* ETH investments
+* Share-based ownership accounting
+* Transaction lifecycle feedback
+* Wallet connection and validation
+* Contract write interactions
 
 ### Revenue Distribution
 
-- Revenue deposits by operators
-- Revenue claims by investors
-- Accumulator-based accounting model
-- On-chain revenue calculations
+* Revenue deposits by operators
+* Revenue claims by investors
+* Accumulator-based accounting model
+* On-chain revenue calculations
 
 ### Lifecycle Management
 
-- FUNDING → ACTIVE → ENDED transitions
-- Funding expiration support
-- Refund support for failed campaigns
-- Campaign finalization support
+* FUNDING → ACTIVE → ENDED transitions
+* Funding expiration support
+* Refund support for failed campaigns
+* Campaign finalization support
 
 ---
 
@@ -83,21 +83,21 @@ WagmiProvider
 
 Responsible for:
 
-- Creating VenueFi campaigns
-- Tracking deployed venues
-- Tracking venues by operator
+* Creating VenueFi campaigns
+* Tracking deployed venues
+* Tracking venues by operator
 
 ### VenueFi
 
 Responsible for:
 
-- Funding lifecycle
-- Revenue distribution
-- Share accounting
-- Fee accounting
-- Claims
-- Refunds
-- Capital withdrawals
+* Funding lifecycle
+* Revenue distribution
+* Share accounting
+* Fee accounting
+* Claims
+* Refunds
+* Capital withdrawals
 
 Contract ABIs are imported directly from Hardhat-generated artifacts.
 
@@ -105,20 +105,23 @@ Contract ABIs are imported directly from Hardhat-generated artifacts.
 
 ## Pages and Routes
 
-### Landing Page
+### Top-Level Routes
 
-| Route | Description |
-|---------|---------|
-| `/` | Protocol overview |
+| Route      | Description              |
+| ---------- | ------------------------ |
+| `/`        | Landing page             |
+| `/invest`  | Investment entry page    |
+| `/revenue` | Revenue interaction page |
+| `/admin`   | Administrative controls  |
 
-### Venue Routes
+### Venue-Specific Routes
 
-| Route | Description |
-|---------|---------|
-| `/venue/[address]` | Venue overview |
-| `/venue/[address]/invest` | Investment interface |
-| `/venue/[address]/admin` | Operator controls |
-| `/venue/[address]/revenue` | Revenue claims |
+| Route                      | Description              |
+| -------------------------- | ------------------------ |
+| `/venue/[address]`         | Venue overview           |
+| `/venue/[address]/invest`  | Venue investment page    |
+| `/venue/[address]/admin`   | Venue administration     |
+| `/venue/[address]/revenue` | Venue revenue management |
 
 ---
 
@@ -126,9 +129,9 @@ Contract ABIs are imported directly from Hardhat-generated artifacts.
 
 ### Prerequisites
 
-- Node.js 18+
-- npm
-- MetaMask or compatible wallet
+* Node.js 18+
+* npm
+* MetaMask or compatible wallet
 
 ### Clone Repository
 
@@ -217,29 +220,32 @@ NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
 
 ---
 
-### Source Structure
-
-- app/ → routes and layouts
-- components/ → reusable UI components
-- hooks/ → custom React hooks
-- lib/ → blockchain and utility logic
-- types/ → shared TypeScript types
-
-## Folder Structure
+## Source Structure
 
 ```text
-frontend/
-├── public/
-├── src/
-│   ├── app/
-│   ├── components/
-│   ├── hooks/
-│   ├── lib/
-│   └── types/
-├── package.json
-├── tsconfig.json
-├── next.config.ts
-└── README.md
+src/app
+├── abi
+│   ├── VenueFactory.json
+│   └── VenueFi.json
+├── admin
+│   └── page.tsx
+├── components
+│   ├── ConnectButton.tsx
+│   ├── Footer.tsx
+│   └── Stat.tsx
+├── invest
+│   └── page.tsx
+├── revenue
+│   └── page.tsx
+├── venue
+│   └── [address]
+│       ├── VenueOverview.tsx
+│       ├── admin
+│       ├── invest
+│       └── revenue
+├── layout.tsx
+├── page.tsx
+└── providers.tsx
 ```
 
 ---
@@ -250,21 +256,21 @@ VenueFi is currently a proof-of-concept implementation deployed and tested on Et
 
 ### Implemented
 
-- Funding lifecycle
-- Revenue-sharing mechanism
-- Revenue claims
-- Operator fee accounting
-- Wallet integration
-- Smart contract interaction layer
-- Responsive user interface
+* Funding lifecycle
+* Revenue-sharing mechanism
+* Revenue claims
+* Operator fee accounting
+* Wallet integration
+* Smart contract interaction layer
+* Responsive user interface
 
 ### Planned Improvements
 
-- Venue creation UI
-- Revenue history indexing
-- Enhanced operator dashboard
-- Multi-chain support
-- Production deployment enhancements
+* Venue creation UI
+* Revenue history indexing
+* Enhanced operator dashboard
+* Multi-chain support
+* Production deployment enhancements
 
 ---
 
@@ -272,12 +278,12 @@ VenueFi is currently a proof-of-concept implementation deployed and tested on Et
 
 This project was built to demonstrate:
 
-- Web3 frontend architecture
-- Smart contract integration
-- Wallet connectivity
-- Type-safe Ethereum interactions
-- Revenue-sharing protocol design
-- Full-stack blockchain development
+* Web3 frontend architecture
+* Smart contract integration
+* Wallet connectivity
+* Type-safe Ethereum interactions
+* Revenue-sharing protocol design
+* Full-stack blockchain development
 
 ---
 
