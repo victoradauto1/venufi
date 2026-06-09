@@ -1,8 +1,31 @@
-# VenueFi
+# VenueFi — Smart Contracts
 
-VenueFi is a Real World Asset (RWA) revenue sharing protocol that allows operators to raise capital from investors, deploy it into a real-world venue or business, and distribute revenue proportionally back to investors on-chain.
+VenueFi is a Real World Asset (RWA) revenue-sharing protocol that allows operators to raise capital from investors, deploy it into a real-world venue or business, and distribute revenue proportionally back to investors on-chain.
 
-VenueFi supports multiple independent venue campaigns through the VenueFactory contract.
+VenueFi supports multiple independent venue campaigns through the `VenueFactory` contract.
+
+---
+
+## Architecture
+
+```text
+VenueFactory
+   ├── VenueFi #1
+   ├── VenueFi #2
+   ├── VenueFi #3
+   └── ...
+```
+
+Each VenueFi instance represents an independent funding campaign with its own:
+
+* Funding goal
+* Funding duration
+* Operating duration
+* Revenue accounting
+* Investor balances
+* Operator fee configuration
+
+The factory is responsible only for deployment and discovery of campaigns.
 
 ---
 
@@ -10,59 +33,108 @@ VenueFi supports multiple independent venue campaigns through the VenueFactory c
 
 The protocol has three distinct phases:
 
-**FUNDING** — Investors deposit ETH and receive shares proportional to their contribution. The campaign has a deadline and a minimum funding goal. If the goal is not reached by the deadline, anyone can call `expireFunding()`, after which investors can reclaim their full investment.
+### FUNDING
 
-**ACTIVE** — Once the funding goal is reached, anyone can call `finalizeFunding()`, enabling the operator to access the raised capital. The operator deposits revenue periodically, which is distributed proportionally to all shareholders. This phase has a fixed duration that cannot be shortened by the operator. Revenue deposits are only allowed before `endTime`.
+Investors deposit ETH and receive shares proportional to their contribution.
 
-**ENDED** — After `endTime`, anyone can call `finalizeCampaign()`. No new revenue can be deposited. Investors can still claim any accumulated revenue. If the campaign expired without reaching the goal, investors can refund their investment.
+The campaign has:
+
+* A funding deadline
+* A minimum funding goal
+
+If the goal is not reached before the deadline:
+
+* Anyone may call `expireFunding()`
+* The campaign transitions to `ENDED`
+* Investors can reclaim their original investment through `refund()`
 
 ---
 
-## Contract Flow
+### ACTIVE
 
-```
-FUNDING ──► ACTIVE ──► ENDED
-│                    ▲
-└── (goal not met) ──┘
-        expireFunding()
+Once the funding goal is reached:
+
+* Anyone may call `finalizeFunding()`
+* The venue enters the ACTIVE state
+* The operator may withdraw the raised capital
+
+During this phase:
+
+* The operator deploys capital into a real-world business
+* Revenue can be deposited on-chain
+* Investors accumulate claimable revenue
+
+The active period lasts for a fixed operating duration determined at deployment.
+
+Revenue deposits are only accepted before `endTime`.
+
+---
+
+### ENDED
+
+After the operating period ends:
+
+* Anyone may call `finalizeCampaign()`
+* The venue transitions to `ENDED`
+
+No additional revenue can be deposited.
+
+Investors may still claim any accumulated revenue.
+
+---
+
+## Contract Lifecycle
+
+```text
+FUNDING ─────────────► ACTIVE ─────────────► ENDED
+   │                                          ▲
+   │                                          │
+   └──────── expireFunding() ─────────────────┘
 ```
 
 ---
 
 ## Share Model
 
-Shares are internal accounting units and are **not transferable**.
+Shares are internal accounting units and are intentionally non-transferable.
 
-- Shares are denominated in wei and directly mapped to the amount of ETH deposited (1 wei = 1 share)  
-- No ERC20 token is minted  
-- There is no secondary market or transfer mechanism  
+Characteristics:
 
-Investors can only:
-- Hold shares  
-- Claim revenue  
-- Refund (if the campaign fails)  
+* 1 wei invested = 1 share
+* No ERC20 token is minted
+* No ERC721 token is minted
+* No transfer mechanism exists
+* No secondary market exists
+
+Investors can:
+
+* Hold shares
+* Claim revenue
+* Refund capital if funding fails
+
+This design significantly simplifies accounting and reduces protocol complexity.
 
 ---
 
-## Key Functions
+## Core Functions
 
-| Function | Who | When | What |
-|---|---|---|---|
-| `invest()` | Anyone | FUNDING | Deposit ETH and receive shares |
-| `finalizeFunding()` | Anyone | FUNDING, goal reached | Transition to ACTIVE |
-| `expireFunding()` | Anyone | FUNDING, deadline passed, goal not reached | Transition to ENDED |
-| `refund()` | Investor | ENDED (expired) | Reclaim full investment |
-| `withdrawCapital()` | Operator | ACTIVE | Withdraw raised capital |
-| `depositRevenue()` | Operator | ACTIVE (before endTime) | Deposit revenue for distribution |
-| `claimRevenue()` | Investor | ACTIVE or ENDED | Claim accumulated revenue |
-| `withdrawOperatorFees()` | Operator | ACTIVE or ENDED | Withdraw accrued fees |
-| `finalizeCampaign()` | Anyone | ACTIVE, after endTime | Transition to ENDED |
+| Function                 | Caller   | State          | Purpose                                      |
+| ------------------------ | -------- | -------------- | -------------------------------------------- |
+| `invest()`               | Anyone   | FUNDING        | Deposit ETH and receive shares               |
+| `finalizeFunding()`      | Anyone   | FUNDING        | Activate venue after funding goal is reached |
+| `expireFunding()`        | Anyone   | FUNDING        | Expire failed campaign                       |
+| `refund()`               | Investor | ENDED          | Recover invested capital                     |
+| `withdrawCapital()`      | Operator | ACTIVE         | Withdraw raised capital                      |
+| `depositRevenue()`       | Operator | ACTIVE         | Deposit business revenue                     |
+| `claimRevenue()`         | Investor | ACTIVE / ENDED | Claim accumulated revenue                    |
+| `withdrawOperatorFees()` | Operator | ACTIVE / ENDED | Withdraw accrued fees                        |
+| `finalizeCampaign()`     | Anyone   | ACTIVE         | End campaign after operating period          |
 
 ---
 
 ## Revenue Distribution
 
-Revenue is distributed using an accumulator pattern inspired by MasterChef:
+Revenue is distributed using an accumulator model inspired by MasterChef.
 
 ```solidity
 accRevenuePerToken += (investorRevenue * PRECISION) / totalSupply;
@@ -72,76 +144,152 @@ pending(user) =
     - rewardDebt[user];
 ```
 
-This enables **O(1) distribution**, regardless of the number of investors.
+This allows revenue accounting to remain:
 
-Key mechanics:
-- `rewardDebt` is updated on every user interaction to prevent capturing past revenue  
-- Operator fees are deducted at deposit time (not at withdrawal)  
-- Integer division rounding may leave minimal residual dust in the contract  
+* O(1) for deposits
+* O(1) for claims
+* Independent of investor count
+
+---
+
+### Revenue Mechanics
+
+When the operator deposits revenue:
+
+1. Operator fee is calculated
+2. Fee is accrued internally
+3. Remaining revenue is allocated proportionally
+4. Investors claim independently
+
+Benefits:
+
+* No loops
+* No investor iteration
+* Scales efficiently
 
 ---
 
 ## State Machine Guarantees
 
-- FUNDING → ACTIVE only if `fundingGoal` is reached  
-- FUNDING → ENDED only if deadline has passed and goal was not reached  
-- ACTIVE → ENDED only after `endTime`  
-- No backward transitions are possible  
+The protocol enforces the following transitions:
+
+### FUNDING → ACTIVE
+
+Requirements:
+
+* Funding goal reached
 
 ---
 
-## Design Decisions and Trade-offs
+### FUNDING → ENDED
 
-**Trusted Operator Model**  
-This protocol is intentionally trust-based.
+Requirements:
+
+* Deadline passed
+* Funding goal not reached
+
+---
+
+### ACTIVE → ENDED
+
+Requirements:
+
+* Operating period completed
+
+---
+
+### Invalid Transitions
+
+The following are impossible:
+
+* ACTIVE → FUNDING
+* ENDED → ACTIVE
+* ENDED → FUNDING
+
+The state machine is strictly forward-only.
+
+---
+
+## Design Decisions
+
+### Trusted Operator Model
+
+VenueFi intentionally assumes a trusted operator.
 
 The operator:
-- Can withdraw all raised capital  
-- Controls when revenue is deposited  
 
-This design assumes a real-world, legally accountable operator.
+* Controls business operations
+* Withdraws raised capital
+* Chooses when to deposit revenue
+
+This mirrors real-world RWA structures where operators remain legally accountable outside the blockchain.
 
 Mitigations:
-- `endTime` enforces a minimum operating period  
-- Anyone can call `finalizeCampaign()` to prevent the contract from being stuck  
+
+* Fixed operating period
+* Transparent on-chain accounting
+* Permissionless campaign finalization
 
 ---
 
-**claimRevenue After ENDED**  
-Revenue claims remain available after finalization.  
-Blocking claims would permanently lock earned funds.
+### Claims After Finalization
+
+Revenue claims remain available after the campaign ends.
+
+Otherwise, earned revenue could become permanently locked.
 
 ---
 
-**Non-transferable Shares**  
-Shares are not tokenized or transferable.  
-This simplifies accounting and avoids secondary market complexity.
+### Non-Transferable Shares
+
+Shares are not tokenized.
+
+Advantages:
+
+* Simpler accounting
+* Smaller attack surface
+* Easier auditing
+* No secondary-market complexity
 
 ---
 
-**Reentrancy Protection**  
-All external calls follow the Checks-Effects-Interactions (CEI) pattern.  
-`nonReentrant` is applied as defense-in-depth.
+### Reentrancy Protection
+
+External value transfers follow:
+
+* Checks
+* Effects
+* Interactions
+
+Additionally:
+
+* `nonReentrant` is applied where appropriate
+* OpenZeppelin `ReentrancyGuard` is used as defense-in-depth
 
 ---
 
-**Fee Validation**  
-`operatorFeePercentage` is capped at 100% at deployment and cannot be changed afterward.
+### Immutable Fee Structure
+
+Operator fees:
+
+* Are defined during deployment
+* Cannot be modified later
+* Are capped at 100%
 
 ---
 
 ## Security Considerations
 
-| Risk | Severity | Mitigation |
-|---|---|---|
-| Operator runs away with capital | High | Trust-based — off-chain enforcement required |
-| Operator withdraws capital without generating revenue | High | Trust-based — no on-chain enforcement |
-| Operator never deposits revenue | High | Trust-based — no on-chain enforcement |
-| Investor captures past revenue | Medium | rewardDebt synchronization |
-| Reentrancy | Low | CEI pattern + nonReentrant |
-| Fee manipulation | Low | Fee capped at deployment |
-| Integer rounding dust | Low | Minimal residual value may remain |
-| Integer overflow/underflow | Low | Solidity 0.8.x protections |
+| Risk                             | Severity | Mitigation                          |
+| -------------------------------- | -------- | ----------------------------------- |
+| Operator disappears with capital | High     | Off-chain legal enforcement         |
+| Operator never deposits revenue  | High     | Trust-based model                   |
+| Operator generates no revenue    | High     | Trust-based model                   |
+| Revenue capture attack           | Medium   | rewardDebt accounting               |
+| Reentrancy                       | Low      | CEI + ReentrancyGuard               |
+| Fee manipulation                 | Low      | Immutable fee configuration         |
+| Rounding dust                    | Low      | Minimal residual balances           |
+| Arithmetic overflow              | Low      | Solidity 0.8.x built-in protections |
 
 ---
 
@@ -161,11 +309,18 @@ constructor(
 
 ## Lifecycle Simulation
 
-The protocol lifecycle was simulated end-to-end using Hardhat scripts, covering funding, activation, capital withdrawal, revenue deposits, investor claims, and campaign finalization.
+The protocol lifecycle has been simulated end-to-end using Hardhat scripts.
+
+Covered flows include:
+
+* Funding
+* Activation
+* Capital withdrawal
+* Revenue deposits
+* Revenue claims
+* Campaign finalization
 
 ### Funding Phase
-
-Shows investors funding the venue and reaching the funding goal.
 
 ![Funding Phase](docs/images/Funding.png)
 
@@ -173,15 +328,11 @@ Shows investors funding the venue and reaching the funding goal.
 
 ### Revenue Deposits
 
-Shows operator revenue deposits and fee distribution.
-
 ![Revenue Deposits](docs/images/Deposits.png)
 
 ---
 
 ### Revenue Claims
-
-Shows proportional revenue claims by investors according to their shares.
 
 ![Revenue Claims](docs/images/Claims.png)
 
@@ -189,15 +340,11 @@ Shows proportional revenue claims by investors according to their shares.
 
 ### Campaign Finalization
 
-Shows the protocol transitioning from ACTIVE to ENDED after the operating period.
-
 ![Campaign Finalization](docs/images/Finalization.png)
 
 ---
 
 ### Final Summary
-
-Shows the final accounting state of the protocol after full lifecycle execution.
 
 ![Final Summary](docs/images/Final_summary.png)
 
@@ -205,19 +352,59 @@ Shows the final accounting state of the protocol after full lifecycle execution.
 
 ## Test Coverage
 
-- 100% statements  
-- 100% functions  
-- 100% lines  
+Current coverage:
+
+* 100% Statements
+* 100% Functions
+* 100% Lines
 
 Known exception:
-- Branch gap in `pending()` underflow guard (defensive path, unreachable in normal flow, covered via test harness)
+
+* Defensive underflow branch inside `pending()`
+* Unreachable during normal execution
+* Covered through dedicated test harness
 
 ---
 
-## Stack
+## Development
 
-- Solidity 0.8.20  
-- Hardhat  
-- OpenZeppelin (ReentrancyGuard)  
-- Ethers.js v6  
-- Chai + Hardhat Network Helpers  
+Install dependencies:
+
+```bash
+npm install
+```
+
+Compile contracts:
+
+```bash
+npx hardhat compile
+```
+
+Run tests:
+
+```bash
+npx hardhat test
+```
+
+Generate coverage:
+
+```bash
+npx hardhat coverage
+```
+
+---
+
+## Technology Stack
+
+* Solidity 0.8.20
+* Hardhat
+* OpenZeppelin Contracts
+* Ethers.js v6
+* Chai
+* Hardhat Network Helpers
+
+---
+
+## License
+
+MIT License

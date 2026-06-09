@@ -1,191 +1,105 @@
 # VenueFi — Frontend
 
-> Next.js frontend for the VenueFi Real World Asset (RWA) revenue-sharing proof-of-concept protocol on Ethereum.
+> Portfolio-grade Web3 frontend built with Next.js, TypeScript, wagmi, viem, and RainbowKit for the VenueFi Real World Asset (RWA) revenue-sharing protocol.
 
-VenueFi is a proof-of-concept RWA revenue-sharing protocol that enables real-world venue operators to raise capital through on-chain funding campaigns and distribute business revenue proportionally to investors.
+VenueFi is a proof-of-concept RWA protocol that enables real-world venue operators to raise capital through on-chain funding campaigns and distribute revenue proportionally to investors.
 
-This frontend provides an interface for interacting with deployed VenueFi smart contracts on Ethereum Sepolia, including wallet connection, venue exploration, investment, revenue deposits, and revenue claims.
-
----
-
-## Features
-
-### Current Functionality
-
-#### Venue Overview
-
-* View venue state (FUNDING, ACTIVE, ENDED)
-* View funding goal
-* View capital raised
-* View funding progress
-* Read all data directly from deployed smart contracts
-
-#### Investment Flow
-
-* Connect wallet
-* Invest ETH into a venue
-* View ownership share
-* Transaction lifecycle feedback
-* Validation and wallet-aware UI
-
-#### Revenue Distribution
-
-* Operator can deposit revenue
-* Revenue is distributed proportionally to investors
-* Investors can claim pending revenue
-* Revenue calculations performed on-chain
-
-#### Protocol Lifecycle
-
-* FUNDING → ACTIVE → ENDED state transitions
-* Funding expiration support
-* Refund support when funding goals are not reached
-
-#### User Experience
-
-* Responsive layout
-* Loading skeletons
-* Transaction feedback
-* Wallet connection through RainbowKit
-* Ethereum Sepolia support
+This frontend provides an interface for interacting with deployed VenueFi smart contracts on Ethereum Sepolia, including venue discovery, investments, revenue deposits, revenue claims, and lifecycle management.
 
 ---
 
-## Tech Stack
+## Architecture Overview
 
-| Layer              | Technology           |
-| ------------------ | -------------------- |
-| Framework          | Next.js              |
-| Language           | TypeScript           |
-| UI                 | React                |
-| Styling            | Tailwind CSS         |
-| Wallet Integration | RainbowKit           |
-| Web3 Integration   | wagmi                |
-| Ethereum Client    | viem                 |
-| Data Fetching      | TanStack React Query |
-| Smart Contracts    | Solidity             |
-| Network            | Ethereum Sepolia     |
+### Technology Stack
 
----
+- Next.js App Router
+- TypeScript
+- React
+- Tailwind CSS
+- RainbowKit
+- wagmi
+- viem
+- TanStack React Query
 
-## Architecture
+### Network
 
-The application follows a server-first architecture using the Next.js App Router.
-
-### Server Components
-
-Responsible for:
-
-* Route handling
-* Layout rendering
-* Static content
-* Parameter extraction
-
-### Client Components
-
-Responsible for:
-
-* Wallet interaction
-* Smart contract reads
-* Smart contract writes
-* Transaction state management
+- Ethereum Sepolia Testnet
 
 ### Provider Stack
 
+```text
 WagmiProvider
 └── QueryClientProvider
-    └── RainbowKitProvider
+    └── RainbowKitProvider
+```
 
-### Contract Integration
+### Design Principles
 
-The frontend interacts directly with:
-
-* VenueFactory
-* VenueFi
-
-Contract ABIs are imported from compiled Hardhat artifacts.
-
----
-
-## Protocol Overview
-
-VenueFi is designed as a revenue-sharing protocol for Real World Assets.
-
-### 1. Venue Creation
-
-An operator creates a new venue by defining:
-
-* Funding goal
-* Funding duration
-* Operating duration
-* Operator fee percentage
-
-### 2. Funding Phase
-
-Investors contribute ETH to the venue.
-
-In return, they receive proportional ownership shares tracked on-chain.
-
-### 3. Activation
-
-When the funding goal is reached:
-
-* Funding is finalized
-* Venue enters ACTIVE state
-
-### 4. Capital Deployment
-
-The operator withdraws the raised capital and deploys it into the real-world business.
-
-### 5. Revenue Deposits
-
-As the business generates revenue:
-
-* The operator deposits revenue on-chain
-* Operator fees are automatically separated
-* Remaining revenue is allocated proportionally to investors
-
-### 6. Revenue Claims
-
-Investors claim accumulated revenue at any time during or after the active period.
-
-### 7. Campaign Finalization
-
-After the operating period ends:
-
-* Campaign is finalized
-* Venue enters ENDED state
-
-### Failed Campaigns
-
-If the funding goal is not reached before the deadline:
-
-* Funding expires
-* Investors can withdraw their funds through refunds
+- Server-first architecture using App Router
+- Type-safe smart contract interactions
+- Direct on-chain reads and writes
+- Wallet-aware user experience
+- Separation between presentation and blockchain interaction layers
 
 ---
 
-## Smart Contracts
+## Core Features
+
+### Venue Dashboard
+
+- Real-time venue state (FUNDING / ACTIVE / ENDED)
+- Funding goal tracking
+- Capital raised tracking
+- Funding progress visualization
+- On-chain data reads
+
+### Investment System
+
+- ETH investments
+- Share-based ownership accounting
+- Transaction lifecycle feedback
+- Wallet connection and validation
+- Contract write interactions
+
+### Revenue Distribution
+
+- Revenue deposits by operators
+- Revenue claims by investors
+- Accumulator-based accounting model
+- On-chain revenue calculations
+
+### Lifecycle Management
+
+- FUNDING → ACTIVE → ENDED transitions
+- Funding expiration support
+- Refund support for failed campaigns
+- Campaign finalization support
+
+---
+
+## Smart Contract Integration
 
 ### VenueFactory
 
 Responsible for:
 
-* Creating VenueFi instances
-* Tracking created venues
-* Tracking venues by operator
+- Creating VenueFi campaigns
+- Tracking deployed venues
+- Tracking venues by operator
 
 ### VenueFi
 
 Responsible for:
 
-* Funding management
-* Revenue distribution
-* Share accounting
-* Fee accounting
-* Claims
-* Refunds
-* Capital withdrawals
+- Funding lifecycle
+- Revenue distribution
+- Share accounting
+- Fee accounting
+- Claims
+- Refunds
+- Capital withdrawals
+
+Contract ABIs are imported directly from Hardhat-generated artifacts.
 
 ---
 
@@ -193,18 +107,18 @@ Responsible for:
 
 ### Landing Page
 
-| Route | Description       |
-| ----- | ----------------- |
-| /     | Protocol overview |
+| Route | Description |
+|---------|---------|
+| `/` | Protocol overview |
 
 ### Venue Routes
 
-| Route                    | Description          |
-| ------------------------ | -------------------- |
-| /venue/[address]         | Venue overview       |
-| /venue/[address]/invest  | Investment interface |
-| /venue/[address]/admin   | Operator controls    |
-| /venue/[address]/revenue | Revenue claims       |
+| Route | Description |
+|---------|---------|
+| `/venue/[address]` | Venue overview |
+| `/venue/[address]/invest` | Investment interface |
+| `/venue/[address]/admin` | Operator controls |
+| `/venue/[address]/revenue` | Revenue claims |
 
 ---
 
@@ -212,15 +126,15 @@ Responsible for:
 
 ### Prerequisites
 
-* Node.js 18+
-* npm
-* MetaMask or compatible wallet
+- Node.js 18+
+- npm
+- MetaMask or compatible wallet
 
 ### Clone Repository
 
 ```bash
 git clone https://github.com/victoradauto1/venufi.git
-cd venufi/frontend
+cd venuefi/frontend
 ```
 
 ### Install Dependencies
@@ -234,11 +148,6 @@ npm install
 ```bash
 cd ../blockchain
 npx hardhat compile
-```
-
-### Return to Frontend
-
-```bash
 cd ../frontend
 ```
 
@@ -252,7 +161,7 @@ Create a `.env.local` file:
 NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_project_id_here
 ```
 
-A valid WalletConnect Cloud Project ID is recommended for production deployments.
+A valid WalletConnect Cloud Project ID is recommended.
 
 ---
 
@@ -268,7 +177,7 @@ Open:
 http://localhost:3000
 ```
 
-Example venue route:
+Example:
 
 ```text
 http://localhost:3000/venue/<contract-address>/invest
@@ -289,16 +198,16 @@ npm start
 
 The application can be deployed to Vercel or any platform that supports Next.js.
 
-### Vercel Deployment
+### Vercel
 
-1. Import the GitHub repository
-2. Set Root Directory to:
+1. Import repository
+2. Set root directory to:
 
 ```text
 frontend
 ```
 
-3. Configure environment variables:
+3. Configure:
 
 ```text
 NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
@@ -307,6 +216,14 @@ NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
 4. Deploy
 
 ---
+
+### Source Structure
+
+- app/ → routes and layouts
+- components/ → reusable UI components
+- hooks/ → custom React hooks
+- lib/ → blockchain and utility logic
+- types/ → shared TypeScript types
 
 ## Folder Structure
 
@@ -329,25 +246,25 @@ frontend/
 
 ## Project Status
 
-VenueFi is currently a proof-of-concept implementation deployed and tested on the Ethereum Sepolia testnet.
+VenueFi is currently a proof-of-concept implementation deployed and tested on Ethereum Sepolia.
 
 ### Implemented
 
-* Venue funding lifecycle
-* Revenue distribution mechanism
-* Revenue claim system
-* Operator fee accounting
-* Wallet integration
-* Smart contract interaction
-* Responsive frontend
+- Funding lifecycle
+- Revenue-sharing mechanism
+- Revenue claims
+- Operator fee accounting
+- Wallet integration
+- Smart contract interaction layer
+- Responsive user interface
 
 ### Planned Improvements
 
-* Venue creation interface
-* Complete operator dashboard
-* Revenue history indexing
-* Production deployment configuration
-* Multi-chain support
+- Venue creation UI
+- Revenue history indexing
+- Enhanced operator dashboard
+- Multi-chain support
+- Production deployment enhancements
 
 ---
 
@@ -355,12 +272,12 @@ VenueFi is currently a proof-of-concept implementation deployed and tested on th
 
 This project was built to demonstrate:
 
-* Solidity development
-* Smart contract architecture
-* Real World Asset (RWA) protocols
-* Revenue-sharing mechanisms
-* Web3 frontend integration
-* Full-stack blockchain development
+- Web3 frontend architecture
+- Smart contract integration
+- Wallet connectivity
+- Type-safe Ethereum interactions
+- Revenue-sharing protocol design
+- Full-stack blockchain development
 
 ---
 
