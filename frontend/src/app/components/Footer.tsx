@@ -12,6 +12,9 @@ export default function Footer() {
             <a href="/" className="hover:text-[#F3F4F6] transition-colors duration-200">
               Home
             </a>
+            <a href="/venues" className="hover:text-[#F3F4F6] transition-colors duration-200">
+              Venues
+            </a>
             <a
               href="https://github.com/victoradauto1/venufi"
               target="_blank"

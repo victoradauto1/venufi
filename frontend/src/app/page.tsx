@@ -27,6 +27,22 @@ export default function Home() {
           <div className="mt-10">
             <ConnectButton />
           </div>
+
+          <div className="mt-8 flex items-center gap-6">
+            <a
+              href="/venues"
+              className="text-[14px] font-sans font-medium text-accent tracking-wide hover:underline underline-offset-4 transition-colors duration-200"
+            >
+              Browse Venues
+            </a>
+            <span className="text-text-tertiary/30">|</span>
+            <a
+              href="/venue/create"
+              className="text-[14px] font-sans font-medium text-accent tracking-wide hover:underline underline-offset-4 transition-colors duration-200"
+            >
+              Create Venue
+            </a>
+          </div>
         </div>
 
         {/* ─── Venue Overview ─── */}
