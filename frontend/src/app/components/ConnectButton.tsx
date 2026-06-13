@@ -34,7 +34,7 @@ export function ConnectButton() {
                     id="connect-wallet-btn"
                     onClick={openConnectModal}
                     type="button"
-                    className="btn-pulse inline-flex items-center gap-2.5 rounded-sm bg-btn-bg px-8 py-3.5 text-[15px] font-normal text-btn-text tracking-wide transition-colors duration-200 hover:bg-btn-hover cursor-pointer font-sans"
+                    className="btn-pulse btn-gold inline-flex items-center gap-2.5 rounded-sm px-8 py-3.5 text-[15px] font-semibold tracking-wide cursor-pointer font-sans"
                   >
                     <WalletIcon />
                     Connect Wallet

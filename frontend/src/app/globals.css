@@ -21,10 +21,10 @@
   --accent-hover: #A68B5E;
   --accent-muted: rgba(183, 155, 108, 0.15);
 
-  /* ── Buttons ── */
-  --btn-bg: #6B4C9A;
-  --btn-text: #F6F1E8;
-  --btn-hover: #5A3D87;
+  /* ── Buttons: Premium Gold ── */
+  --btn-bg: #C9A84C;
+  --btn-text: #1A1503;
+  --btn-hover: #D4A849;
 
   /* ── Status ── */
   --success: #B79B6C;
@@ -85,4 +85,61 @@ html {
 
 .btn-pulse {
   animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* ── Premium Gold Button ── */
+@keyframes gold-shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.btn-gold {
+  background: linear-gradient(
+    135deg,
+    #C4943D 0%,
+    #D4A849 20%,
+    #E8C96A 40%,
+    #F5DFA0 50%,
+    #E8C96A 60%,
+    #D4A849 80%,
+    #C4943D 100%
+  );
+  background-size: 200% 100%;
+  color: #1A1503;
+  border: 1px solid rgba(168, 136, 47, 0.6);
+  box-shadow:
+    0 2px 16px rgba(212, 168, 73, 0.4),
+    0 1px 3px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.2);
+  transition: all 0.3s ease;
+  animation: pulse-glow 2s ease-in-out infinite, gold-shimmer 3s ease-in-out infinite;
+}
+
+.btn-gold:hover {
+  background: linear-gradient(
+    135deg,
+    #D4A849 0%,
+    #E5C06E 20%,
+    #F5DFA0 40%,
+    #FFF2CC 50%,
+    #F5DFA0 60%,
+    #E5C06E 80%,
+    #D4A849 100%
+  );
+  background-size: 200% 100%;
+  box-shadow:
+    0 4px 24px rgba(212, 168, 73, 0.55),
+    0 2px 6px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  border-color: rgba(212, 168, 73, 0.8);
+  transform: translateY(-1px);
+}
+
+.btn-gold:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow:
+    0 1px 8px rgba(212, 168, 73, 0.3),
+    0 1px 2px rgba(0, 0, 0, 0.1),
+    inset 0 2px 4px rgba(0, 0, 0, 0.1);
 }
