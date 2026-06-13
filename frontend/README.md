@@ -4,7 +4,7 @@
 
 VenueFi is a proof-of-concept RWA protocol that enables real-world venue operators to raise capital through on-chain funding campaigns and distribute revenue proportionally to investors.
 
-This frontend provides an interface for interacting with deployed VenueFi smart contracts on Ethereum Sepolia, including interaction with deployed VenueFi campaigns, investments, revenue deposits, revenue claims, and lifecycle management.
+This frontend provides a complete interface for interacting with deployed VenueFi smart contracts on Ethereum Sepolia, including venue creation, venue discovery, investments, revenue deposits, revenue claims, and lifecycle management.
 
 ---
 
@@ -44,6 +44,24 @@ WagmiProvider
 ---
 
 ## Core Features
+
+### Venue Explorer
+
+* Browse all deployed VenueFi campaigns
+* Multicall-powered venue discovery
+* Funding progress overview
+* Operator information display
+* Direct navigation to venue dashboards
+
+### Venue Creation
+
+* Deploy new VenueFi campaigns from the frontend
+* Funding goal configuration
+* Funding duration configuration
+* Operating duration configuration
+* Operator fee configuration
+* Transaction lifecycle feedback
+* Automatic navigation to newly created venues
 
 ### Venue Dashboard
 
@@ -107,20 +125,22 @@ Contract ABIs are imported directly from Hardhat-generated artifacts.
 
 ### Top-Level Routes
 
-| Route      | Description              |
-| ---------- | ------------------------ |
-| `/`        | Landing page             |
-| `/invest`  | Investment entry page    |
+| Route | Description |
+|---------|---------|
+| `/` | Landing page |
+| `/venues` | Venue explorer |
+| `/venue/create` | Create a new venue campaign |
+| `/invest` | Investment entry page |
 | `/revenue` | Revenue interaction page |
-| `/admin`   | Administrative controls  |
+| `/admin` | Administrative controls |
 
 ### Venue-Specific Routes
 
-| Route                      | Description              |
-| -------------------------- | ------------------------ |
-| `/venue/[address]`         | Venue overview           |
-| `/venue/[address]/invest`  | Venue investment page    |
-| `/venue/[address]/admin`   | Venue administration     |
+| Route | Description |
+|---------|---------|
+| `/venue/[address]` | Venue overview |
+| `/venue/[address]/invest` | Venue investment page |
+| `/venue/[address]/admin` | Venue administration |
 | `/venue/[address]/revenue` | Venue revenue management |
 
 ---
@@ -183,7 +203,7 @@ http://localhost:3000
 Example:
 
 ```text
-http://localhost:3000/venue/<contract-address>/invest
+http://localhost:3000/venue/<contract-address>
 ```
 
 ---
@@ -204,6 +224,7 @@ The application can be deployed to Vercel or any platform that supports Next.js.
 ### Vercel
 
 1. Import repository
+
 2. Set root directory to:
 
 ```text
@@ -238,11 +259,24 @@ src/app
 ├── revenue
 │   └── page.tsx
 ├── venue
-│   └── [address]
-│       ├── VenueOverview.tsx
-│       ├── admin
-│       ├── invest
-│       └── revenue
+│   ├── [address]
+│   │   ├── VenueOverview.tsx
+│   │   ├── admin
+│   │   │   ├── AdminContent.tsx
+│   │   │   └── page.tsx
+│   │   ├── invest
+│   │   │   ├── InvestContent.tsx
+│   │   │   └── page.tsx
+│   │   ├── page.tsx
+│   │   └── revenue
+│   │       ├── RevenueContent.tsx
+│   │       └── page.tsx
+│   └── create
+│       ├── CreateVenueContent.tsx
+│       └── page.tsx
+├── venues
+│   ├── VenuesContent.tsx
+│   └── page.tsx
 ├── layout.tsx
 ├── page.tsx
 └── providers.tsx
@@ -256,6 +290,8 @@ VenueFi is currently a proof-of-concept implementation deployed and tested on Et
 
 ### Implemented
 
+* Venue explorer
+* Venue creation interface
 * Funding lifecycle
 * Revenue-sharing mechanism
 * Revenue claims
@@ -266,7 +302,6 @@ VenueFi is currently a proof-of-concept implementation deployed and tested on Et
 
 ### Planned Improvements
 
-* Venue creation UI
 * Revenue history indexing
 * Enhanced operator dashboard
 * Multi-chain support
@@ -283,6 +318,7 @@ This project was built to demonstrate:
 * Wallet connectivity
 * Type-safe Ethereum interactions
 * Revenue-sharing protocol design
+* Frontend multicall patterns
 * Full-stack blockchain development
 
 ---
