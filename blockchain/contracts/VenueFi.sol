@@ -17,6 +17,9 @@ contract VenueFi is ReentrancyGuard {
                                STORAGE
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Human-readable name for this venue (immutable after deployment)
+    string public venueName;
+
     State public state;
 
     /// @notice Deadline for the funding phase
@@ -114,12 +117,14 @@ contract VenueFi is ReentrancyGuard {
                             CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
+    /// @param _venueName Human-readable name for this venue
     /// @param _fundingDeadline Duration of funding phase
     /// @param _operatingDuration Duration of ACTIVE phase (starts at finalizeFunding)
     /// @param _fundingGoal Minimum capital required
     /// @param _operator Address receiving fees and capital
     /// @param _operatorFeePercentage Fee taken on each revenue deposit
     constructor(
+        string memory _venueName,
         uint256 _fundingDeadline,
         uint256 _operatingDuration,
         uint256 _fundingGoal,
@@ -128,6 +133,7 @@ contract VenueFi is ReentrancyGuard {
     ) {
         if (_operatorFeePercentage > 100) revert InvalidFeePercentage();
 
+        venueName = _venueName;
         deadline = block.timestamp + _fundingDeadline;
         operatingDuration = _operatingDuration;
         fundingGoal = _fundingGoal;

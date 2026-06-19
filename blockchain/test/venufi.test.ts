@@ -11,6 +11,7 @@ describe("VenueFi", function () {
 
     const VenueFi = await ethers.getContractFactory("VenueFi");
     const venue = await VenueFi.deploy(
+      "Iron Temple Gym",
       3600, // funding deadline: 1h
       31536000, // operating duration: 1 year
       ethers.parseEther("1"),
@@ -41,10 +42,16 @@ describe("VenueFi", function () {
       expect(venue).to.not.be.undefined;
     });
 
+    it("should store the venue name", async function () {
+      const { venue } = await loadFixture(deployFixture);
+      expect(await venue.venueName()).to.equal("Iron Temple Gym");
+    });
+
     it("should revert InvalidFeePercentage if fee > 100", async function () {
       const [owner] = await ethers.getSigners();
       const VenueFi = await ethers.getContractFactory("VenueFi");
       const venue = await VenueFi.deploy(
+        "Test Venue",
         3600,
         31536000,
         ethers.parseEther("1"),
@@ -53,6 +60,7 @@ describe("VenueFi", function () {
       );
       await expect(
         VenueFi.deploy(
+          "Test Venue",
           3600,
           31536000,
           ethers.parseEther("1"),
@@ -243,6 +251,7 @@ describe("VenueFi", function () {
       const VenueFi = await ethers.getContractFactory("VenueFi");
       const [owner] = await ethers.getSigners();
       const venue2 = await VenueFi.deploy(
+        "Test Venue",
         3600,
         31536000,
         ethers.parseEther("5"),
@@ -349,6 +358,7 @@ describe("VenueFi", function () {
       const [owner] = await ethers.getSigners();
       const Harness = await ethers.getContractFactory("VenueFiHarness");
       const harness = await Harness.deploy(
+        "Test Venue",
         3600,
         31536000,
         ethers.parseEther("1"),
@@ -432,6 +442,7 @@ describe("VenueFi", function () {
       const [owner, user1] = await ethers.getSigners();
       const Harness = await ethers.getContractFactory("VenueFiHarness");
       const harness = await Harness.deploy(
+        "Test Venue",
         3600,
         31536000, // operating duration
         ethers.parseEther("1"),
@@ -565,6 +576,7 @@ describe("VenueFi", function () {
       const VenueFi = await ethers.getContractFactory("VenueFi");
       const [owner] = await ethers.getSigners();
       const venue2 = await VenueFi.deploy(
+        "Test Venue",
         3600,
         31536000,
         ethers.parseEther("0.05"),
@@ -686,6 +698,7 @@ describe("VenueFi", function () {
       await fakeOperator.waitForDeployment();
 
       const venue2 = await VenueFi.deploy(
+        "Test Venue",
         3600,
         31536000,
         ethers.parseEther("0.5"),
@@ -730,6 +743,7 @@ describe("VenueFi", function () {
       const [owner] = await ethers.getSigners();
       const Harness = await ethers.getContractFactory("VenueFiHarness");
       const harness = await Harness.deploy(
+        "Test Venue",
         3600,
         31536000, // operating duration
         ethers.parseEther("1"),
@@ -785,6 +799,7 @@ describe("VenueFi", function () {
       await fakeOperator.waitForDeployment();
 
       const venue2 = await VenueFi.deploy(
+        "Test Venue",
         3600,
         31536000,
         ethers.parseEther("0.5"),

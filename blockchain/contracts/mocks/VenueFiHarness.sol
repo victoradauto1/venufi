@@ -4,6 +4,7 @@ import "../VenueFi.sol";
 
 contract VenueFiHarness is VenueFi {
     constructor(
+        string memory _venueName,
         uint256 _deadline,
         uint256 _operatingDuration,
         uint256 _fundingGoal,
@@ -11,6 +12,7 @@ contract VenueFiHarness is VenueFi {
         uint256 _operatorFeePercentage
     )
         VenueFi(
+            _venueName,
             _deadline,
             _operatingDuration,
             _fundingGoal,

@@ -18,6 +18,7 @@ contract VenueFactory {
     event VenueCreated(
         address indexed venue,
         address indexed operator,
+        string venueName,
         uint256 fundingGoal,
         uint256 fundingDuration
     );
@@ -36,6 +37,7 @@ contract VenueFactory {
     //////////////////////////////////////////////////////////////*/
 
     function createVenue(
+        string memory _venueName,
         uint256 _fundingDuration,
         uint256 _operatingDuration,
         uint256 _fundingGoal,
@@ -49,6 +51,7 @@ contract VenueFactory {
         address operator = msg.sender;
 
         VenueFi newVenue = new VenueFi(
+            _venueName,
             _fundingDuration,
             _operatingDuration,
             _fundingGoal,
@@ -61,7 +64,7 @@ contract VenueFactory {
         venues.push(venueAddress);
         venuesByOperator[operator].push(venueAddress);
 
-        emit VenueCreated(venueAddress, operator, _fundingGoal, _fundingDuration);
+        emit VenueCreated(venueAddress, operator, _venueName, _fundingGoal, _fundingDuration);
 
         return venueAddress;
     }

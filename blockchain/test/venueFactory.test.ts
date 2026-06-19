@@ -6,6 +6,7 @@ const {
 
 describe("VenueFactory", function () {
   // Default params for a valid venue creation
+  const VENUE_NAME = "Iron Temple Gym";
   const FUNDING_DURATION = 3600; // 1 hour
   const OPERATING_DURATION = 31536000; // 1 year
   const FUNDING_GOAL = ethers.parseEther("1");
@@ -29,6 +30,7 @@ describe("VenueFactory", function () {
       const { factory, operator } = await loadFixture(deployFactoryFixture);
 
       const tx = await factory.connect(operator).createVenue(
+        VENUE_NAME,
         FUNDING_DURATION,
         OPERATING_DURATION,
         FUNDING_GOAL,
@@ -45,6 +47,7 @@ describe("VenueFactory", function () {
       const { factory, operator } = await loadFixture(deployFactoryFixture);
 
       await factory.connect(operator).createVenue(
+        VENUE_NAME,
         FUNDING_DURATION,
         OPERATING_DURATION,
         FUNDING_GOAL,
@@ -63,6 +66,7 @@ describe("VenueFactory", function () {
 
       await expect(
         factory.connect(operator).createVenue(
+          VENUE_NAME,
           FUNDING_DURATION,
           OPERATING_DURATION,
           FUNDING_GOAL,
@@ -74,6 +78,7 @@ describe("VenueFactory", function () {
           // venue address is dynamic — use anyValue via a predicate
           (addr: string) => addr !== ethers.ZeroAddress,
           operator.address,
+          VENUE_NAME,
           FUNDING_GOAL,
           FUNDING_DURATION,
         );
@@ -83,6 +88,7 @@ describe("VenueFactory", function () {
       const { factory, operator, otherUser } = await loadFixture(deployFactoryFixture);
 
       await factory.connect(operator).createVenue(
+        VENUE_NAME,
         FUNDING_DURATION,
         OPERATING_DURATION,
         FUNDING_GOAL,
@@ -90,6 +96,7 @@ describe("VenueFactory", function () {
       );
 
       await factory.connect(otherUser).createVenue(
+        "Sunset Lounge",
         7200,
         OPERATING_DURATION,
         ethers.parseEther("2"),
@@ -103,6 +110,7 @@ describe("VenueFactory", function () {
       const { factory, operator } = await loadFixture(deployFactoryFixture);
 
       await factory.connect(operator).createVenue(
+        VENUE_NAME,
         FUNDING_DURATION,
         OPERATING_DURATION,
         FUNDING_GOAL,
@@ -121,6 +129,7 @@ describe("VenueFactory", function () {
       const { factory, operator } = await loadFixture(deployFactoryFixture);
 
       await factory.connect(operator).createVenue(
+        VENUE_NAME,
         FUNDING_DURATION,
         OPERATING_DURATION,
         FUNDING_GOAL,
@@ -138,6 +147,7 @@ describe("VenueFactory", function () {
       const { factory, operator } = await loadFixture(deployFactoryFixture);
 
       await factory.connect(operator).createVenue(
+        VENUE_NAME,
         FUNDING_DURATION,
         OPERATING_DURATION,
         FUNDING_GOAL,
@@ -150,6 +160,24 @@ describe("VenueFactory", function () {
 
       expect(await venue.operatorFeePercentage()).to.equal(OPERATOR_FEE);
     });
+
+    it("should pass correct venueName to the child VenueFi", async function () {
+      const { factory, operator } = await loadFixture(deployFactoryFixture);
+
+      await factory.connect(operator).createVenue(
+        VENUE_NAME,
+        FUNDING_DURATION,
+        OPERATING_DURATION,
+        FUNDING_GOAL,
+        OPERATOR_FEE,
+      );
+
+      const venueAddress = await factory.venues(0);
+      const VenueFi = await ethers.getContractFactory("VenueFi");
+      const venue = VenueFi.attach(venueAddress);
+
+      expect(await venue.venueName()).to.equal(VENUE_NAME);
+    });
   });
 
   // ----------------------------------------------------------------
@@ -161,6 +189,7 @@ describe("VenueFactory", function () {
 
       await expect(
         factory.connect(operator).createVenue(
+          VENUE_NAME,
           0, // ← invalid
           OPERATING_DURATION,
           FUNDING_GOAL,
@@ -174,6 +203,7 @@ describe("VenueFactory", function () {
 
       await expect(
         factory.connect(operator).createVenue(
+          VENUE_NAME,
           FUNDING_DURATION,
           0, // ← invalid
           FUNDING_GOAL,
@@ -187,6 +217,7 @@ describe("VenueFactory", function () {
 
       await expect(
         factory.connect(operator).createVenue(
+          VENUE_NAME,
           FUNDING_DURATION,
           OPERATING_DURATION,
           0, // ← invalid
@@ -200,6 +231,7 @@ describe("VenueFactory", function () {
 
       await expect(
         factory.connect(operator).createVenue(
+          VENUE_NAME,
           FUNDING_DURATION,
           OPERATING_DURATION,
           FUNDING_GOAL,
@@ -213,6 +245,7 @@ describe("VenueFactory", function () {
 
       await expect(
         factory.connect(operator).createVenue(
+          VENUE_NAME,
           FUNDING_DURATION,
           OPERATING_DURATION,
           FUNDING_GOAL,
@@ -226,6 +259,7 @@ describe("VenueFactory", function () {
 
       await expect(
         factory.connect(operator).createVenue(
+          VENUE_NAME,
           FUNDING_DURATION,
           OPERATING_DURATION,
           FUNDING_GOAL,
@@ -249,6 +283,7 @@ describe("VenueFactory", function () {
       const { factory, operator } = await loadFixture(deployFactoryFixture);
 
       await factory.connect(operator).createVenue(
+        VENUE_NAME,
         FUNDING_DURATION,
         OPERATING_DURATION,
         FUNDING_GOAL,
@@ -257,6 +292,7 @@ describe("VenueFactory", function () {
       expect(await factory.getVenuesCount()).to.equal(1);
 
       await factory.connect(operator).createVenue(
+        VENUE_NAME,
         FUNDING_DURATION,
         OPERATING_DURATION,
         FUNDING_GOAL,
@@ -269,6 +305,7 @@ describe("VenueFactory", function () {
       const { factory, operator } = await loadFixture(deployFactoryFixture);
 
       const tx1 = await factory.connect(operator).createVenue(
+        VENUE_NAME,
         FUNDING_DURATION,
         OPERATING_DURATION,
         FUNDING_GOAL,
@@ -277,6 +314,7 @@ describe("VenueFactory", function () {
       const receipt1 = await tx1.wait();
 
       const tx2 = await factory.connect(operator).createVenue(
+        "Sunset Lounge",
         7200,
         OPERATING_DURATION,
         ethers.parseEther("2"),
@@ -308,6 +346,7 @@ describe("VenueFactory", function () {
       const { factory, operator } = await loadFixture(deployFactoryFixture);
 
       await factory.connect(operator).createVenue(
+        VENUE_NAME,
         FUNDING_DURATION,
         OPERATING_DURATION,
         FUNDING_GOAL,
@@ -315,6 +354,7 @@ describe("VenueFactory", function () {
       );
 
       await factory.connect(operator).createVenue(
+        "Sunset Lounge",
         7200,
         OPERATING_DURATION,
         ethers.parseEther("5"),
@@ -330,12 +370,14 @@ describe("VenueFactory", function () {
 
       // operator creates 2 venues
       await factory.connect(operator).createVenue(
+        VENUE_NAME,
         FUNDING_DURATION,
         OPERATING_DURATION,
         FUNDING_GOAL,
         OPERATOR_FEE,
       );
       await factory.connect(operator).createVenue(
+        "Iron Temple Gym 2",
         FUNDING_DURATION,
         OPERATING_DURATION,
         FUNDING_GOAL,
@@ -344,6 +386,7 @@ describe("VenueFactory", function () {
 
       // otherUser creates 1 venue
       await factory.connect(otherUser).createVenue(
+        "Sunset Lounge",
         FUNDING_DURATION,
         OPERATING_DURATION,
         ethers.parseEther("3"),
@@ -364,6 +407,7 @@ describe("VenueFactory", function () {
       const { factory, operator } = await loadFixture(deployFactoryFixture);
 
       await factory.connect(operator).createVenue(
+        VENUE_NAME,
         FUNDING_DURATION,
         OPERATING_DURATION,
         FUNDING_GOAL,
@@ -390,18 +434,21 @@ describe("VenueFactory", function () {
       const { factory, operator, otherUser } = await loadFixture(deployFactoryFixture);
 
       await factory.connect(operator).createVenue(
+        VENUE_NAME,
         FUNDING_DURATION,
         OPERATING_DURATION,
         FUNDING_GOAL,
         OPERATOR_FEE,
       );
       await factory.connect(otherUser).createVenue(
+        "Sunset Lounge",
         FUNDING_DURATION,
         OPERATING_DURATION,
         FUNDING_GOAL,
         OPERATOR_FEE,
       );
       await factory.connect(operator).createVenue(
+        "Iron Temple Gym 2",
         FUNDING_DURATION,
         OPERATING_DURATION,
         FUNDING_GOAL,
@@ -420,6 +467,7 @@ describe("VenueFactory", function () {
       const { factory, operator, otherUser } = await loadFixture(deployFactoryFixture);
 
       await factory.connect(operator).createVenue(
+        VENUE_NAME,
         FUNDING_DURATION,
         OPERATING_DURATION,
         FUNDING_GOAL,
@@ -441,6 +489,7 @@ describe("VenueFactory", function () {
       const { factory, operator, otherUser } = await loadFixture(deployFactoryFixture);
 
       await factory.connect(operator).createVenue(
+        VENUE_NAME,
         FUNDING_DURATION,
         OPERATING_DURATION,
         FUNDING_GOAL,

@@ -70,6 +70,7 @@ async function main() {
   const OPERATOR_FEE = 10n; // 10%
 
   const tx = await factory.connect(operator).createVenue(
+    "Iron Temple Gym",
     FUNDING_DURATION,
     OPERATING_DURATION,
     FUNDING_GOAL,
