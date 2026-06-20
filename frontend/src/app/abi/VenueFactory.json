@@ -36,6 +36,12 @@
         },
         {
           "indexed": false,
+          "internalType": "string",
+          "name": "venueName",
+          "type": "string"
+        },
+        {
+          "indexed": false,
           "internalType": "uint256",
           "name": "fundingGoal",
           "type": "uint256"
@@ -52,6 +58,11 @@
     },
     {
       "inputs": [
+        {
+          "internalType": "string",
+          "name": "_venueName",
+          "type": "string"
+        },
         {
           "internalType": "uint256",
           "name": "_fundingDuration",
