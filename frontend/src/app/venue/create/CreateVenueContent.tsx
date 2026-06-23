@@ -26,6 +26,7 @@ const SECONDS_PER_DAY = 86400n;
 // ---------------------------------------------------------------------------
 
 interface FormFields {
+  venueName: string;
   fundingGoal: string;
   fundingDuration: string;
   operatingDuration: string;
@@ -39,6 +40,11 @@ interface ValidationResult {
 
 function validateForm(fields: FormFields): ValidationResult {
   const errors: Partial<Record<keyof FormFields, string>> = {};
+
+  // Venue Name
+  if (fields.venueName.trim() === "") {
+    errors.venueName = "Enter a venue name.";
+  }
 
   // Funding Goal
   const goal = parseFloat(fields.fundingGoal);
@@ -162,6 +168,7 @@ export function CreateVenueContent() {
   } = useCreateVenue();
 
   // ── Form state ──────────────────────────────────────────────────────────
+  const [venueName, setVenueName] = useState("");
   const [fundingGoal, setFundingGoal] = useState("");
   const [fundingDuration, setFundingDuration] = useState("");
   const [operatingDuration, setOperatingDuration] = useState("");
@@ -172,12 +179,13 @@ export function CreateVenueContent() {
   const validation = useMemo(
     () =>
       validateForm({
+        venueName,
         fundingGoal,
         fundingDuration,
         operatingDuration,
         operatorFeePercentage,
       }),
-    [fundingGoal, fundingDuration, operatingDuration, operatorFeePercentage],
+    [venueName, fundingGoal, fundingDuration, operatingDuration, operatorFeePercentage],
   );
 
   // ── Transaction UX state ────────────────────────────────────────────────
@@ -221,6 +229,7 @@ export function CreateVenueContent() {
 
     // Mark all fields as touched
     setTouched({
+      venueName: true,
       fundingGoal: true,
       fundingDuration: true,
       operatingDuration: true,
@@ -235,6 +244,7 @@ export function CreateVenueContent() {
 
     try {
       const params: CreateVenueParams = {
+        venueName: venueName.trim(),
         fundingGoal: parseEther(fundingGoal),
         fundingDuration: BigInt(parseInt(fundingDuration, 10)) * SECONDS_PER_DAY,
         operatingDuration: BigInt(parseInt(operatingDuration, 10)) * SECONDS_PER_DAY,
@@ -252,6 +262,7 @@ export function CreateVenueContent() {
   }, [
     canSubmit,
     validation.isValid,
+    venueName,
     fundingGoal,
     fundingDuration,
     operatingDuration,
@@ -263,6 +274,7 @@ export function CreateVenueContent() {
   // Clear form on success
   useEffect(() => {
     if (tx.status === "success") {
+      setVenueName("");
       setFundingGoal("");
       setFundingDuration("");
       setOperatingDuration("");
@@ -281,6 +293,31 @@ export function CreateVenueContent() {
         </h3>
 
         <div className="flex flex-col gap-6">
+          {/* Venue Name */}
+          <div>
+            <label
+              htmlFor="venue-name"
+              className="block text-[13px] text-text-tertiary mb-2.5 font-sans tracking-wide uppercase"
+            >
+              Venue Name
+            </label>
+            <input
+              id="venue-name"
+              type="text"
+              value={venueName}
+              onChange={(e) => setVenueName(e.target.value)}
+              onBlur={() => setTouched((t) => ({ ...t, venueName: true }))}
+              placeholder="e.g. Beach Bar"
+              disabled={isTxInProgress}
+              className="w-full rounded-sm border border-border bg-background px-5 py-3.5 text-[15px] text-text-primary font-sans placeholder:text-text-tertiary/60 focus:outline-none focus:border-accent transition-colors duration-200 disabled:opacity-60"
+            />
+            {touched.venueName && validation.errors.venueName && (
+              <p className="mt-1.5 text-[12px] text-red-400/90 font-sans">
+                {validation.errors.venueName}
+              </p>
+            )}
+          </div>
+
           {/* Funding Goal */}
           <div>
             <label
@@ -453,13 +490,21 @@ export function CreateVenueContent() {
       )}
 
       {/* ─── Parameter Preview ─── */}
-      {(fundingGoal || fundingDuration || operatingDuration || operatorFeePercentage) && (
+      {(venueName || fundingGoal || fundingDuration || operatingDuration || operatorFeePercentage) && (
         <div className="w-full mt-8 rounded-sm border border-border bg-surface-raised/50 p-9">
           <h3 className="text-[13px] font-normal tracking-[0.3em] uppercase text-text-secondary mb-5 font-sans">
             Parameter Preview
           </h3>
 
           <div className="grid grid-cols-2 gap-5">
+            <div className="col-span-2">
+              <p className="text-[13px] text-text-tertiary mb-1 font-sans tracking-wide uppercase">
+                Venue Name
+              </p>
+              <p className="text-xl font-light text-text-primary font-serif tracking-tight">
+                {venueName || "—"}
+              </p>
+            </div>
             <div>
               <p className="text-[13px] text-text-tertiary mb-1 font-sans tracking-wide uppercase">
                 Funding Goal

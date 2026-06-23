@@ -11,6 +11,7 @@ import {
 // ---------------------------------------------------------------------------
 
 export interface CreateVenueParams {
+  venueName: string;
   fundingDuration: bigint;
   operatingDuration: bigint;
   fundingGoal: bigint;
@@ -50,6 +51,7 @@ export function useCreateVenue() {
       abi: venueFactoryAbi,
       functionName: "createVenue",
       args: [
+        params.venueName,
         params.fundingDuration,
         params.operatingDuration,
         params.fundingGoal,
