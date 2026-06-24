@@ -2,6 +2,7 @@
 
 import type { Address } from "viem";
 import {
+  useVenueName,
   useVenueState,
   useVenueFundingGoal,
   useVenueCurrentRaised,
@@ -35,11 +36,14 @@ interface VenueOverviewProps {
 export function VenueOverview({ venueAddress }: VenueOverviewProps) {
   const address = venueAddress as Address;
 
+  const { data: nameRaw, isLoading: nameLoading } = useVenueName(address);
   const { data: stateRaw, isLoading: stateLoading } = useVenueState(address);
   const { data: fundingGoal, isLoading: goalLoading } = useVenueFundingGoal(address);
   const { data: currentRaised, isLoading: raisedLoading } = useVenueCurrentRaised(address);
 
-  const isLoading = stateLoading || goalLoading || raisedLoading;
+  const isLoading = nameLoading || stateLoading || goalLoading || raisedLoading;
+
+  const venueName = (nameRaw as string) || "VenueFi Campaign";
 
   // Derived values (safe defaults while loading)
   const venueState = (stateRaw ?? VenueState.FUNDING) as VenueStateValue;
@@ -104,7 +108,7 @@ export function VenueOverview({ venueAddress }: VenueOverviewProps) {
       <div className="w-full max-w-md lg:max-w-sm xl:max-w-md rounded-sm border border-border bg-surface p-10 shadow-[0_2px_12px_rgba(0,0,0,0.04)] flex flex-col justify-center">
         <div className="flex items-center justify-between mb-8">
           <h2 className="text-[21px] font-light text-text-primary font-serif tracking-wide">
-            Historic Cultural Venue
+            {venueName}
           </h2>
           <span className="inline-flex items-center gap-1.5 rounded-sm bg-accent-muted px-3.5 py-1.5 text-[12px] font-medium tracking-[0.15em] uppercase text-accent font-sans">
             <span className="h-1.5 w-1.5 rounded-full bg-accent" />
