@@ -23,6 +23,7 @@ import { Stat } from "../components/Stat";
 
 interface VenueData {
   address: Address;
+  venueName: string;
   state: VenueStateValue;
   fundingGoal: bigint;
   currentRaised: bigint;
@@ -107,6 +108,7 @@ export function VenuesContent() {
   const detailContracts = useMemo(() => {
     if (venueAddresses.length === 0) return [];
     return venueAddresses.flatMap((addr) => [
+      { address: addr, abi: venueFiAbi as Abi, functionName: "venueName" as const },
       { address: addr, abi: venueFiAbi as Abi, functionName: "state" as const },
       { address: addr, abi: venueFiAbi as Abi, functionName: "fundingGoal" as const },
       { address: addr, abi: venueFiAbi as Abi, functionName: "currentRaised" as const },
@@ -123,37 +125,48 @@ export function VenuesContent() {
   });
 
   // ── Assemble venue data ──────────────────────────────────────────────────
-  const venues = useMemo<VenueData[]>(() => {
-    if (!detailResults || venueAddresses.length === 0) return [];
+const venues = useMemo<VenueData[]>(() => {
+  if (!detailResults || venueAddresses.length === 0) return [];
 
-    const result: VenueData[] = [];
-    for (let i = 0; i < venueAddresses.length; i++) {
-      const base = i * 4;
-      const stateRes = detailResults[base];
-      const goalRes = detailResults[base + 1];
-      const raisedRes = detailResults[base + 2];
-      const operatorRes = detailResults[base + 3];
+  const result: VenueData[] = [];
+  for (let i = 0; i < venueAddresses.length; i++) {
+    const base = i * 5;
+    const nameRes = detailResults[base];
+    const stateRes = detailResults[base + 1];
+    const goalRes = detailResults[base + 2];
+    const raisedRes = detailResults[base + 3];
+    const operatorRes = detailResults[base + 4];
 
-      // Skip venues where any call failed
-      if (
-        stateRes?.status !== "success" ||
-        goalRes?.status !== "success" ||
-        raisedRes?.status !== "success" ||
-        operatorRes?.status !== "success"
-      ) {
-        continue;
-      }
-
-      result.push({
-        address: venueAddresses[i],
-        state: (stateRes.result as number) as VenueStateValue,
-        fundingGoal: goalRes.result as bigint,
-        currentRaised: raisedRes.result as bigint,
-        operator: operatorRes.result as Address,
-      });
+    // Skip venues where any call failed
+    if (
+      nameRes?.status !== "success" ||
+      stateRes?.status !== "success" ||
+      goalRes?.status !== "success" ||
+      raisedRes?.status !== "success" ||
+      operatorRes?.status !== "success"
+    ) {
+      continue;
     }
-    return result;
-  }, [detailResults, venueAddresses]);
+
+    const rawName = nameRes.result;
+
+    const venueName =
+      typeof rawName === "string" && rawName.trim().length > 0
+        ? rawName.trim()
+        : truncateAddress(venueAddresses[i]);
+
+    result.push({
+      address: venueAddresses[i],
+      venueName,
+      state: (stateRes.result as number) as VenueStateValue,
+      fundingGoal: goalRes.result as bigint,
+      currentRaised: raisedRes.result as bigint,
+      operator: operatorRes.result as Address,
+    });
+  }
+
+  return result;
+}, [detailResults, venueAddresses]);
 
   // ── Loading state ────────────────────────────────────────────────────────
   const isLoading = countLoading || addressesLoading || detailsLoading;
@@ -220,14 +233,17 @@ function VenueCard({ venue }: { venue: VenueData }) {
 
   return (
     <div className="rounded-sm border border-border bg-surface p-8 shadow-[0_2px_12px_rgba(0,0,0,0.04)] flex flex-col transition-shadow duration-200 hover:shadow-[0_4px_20px_rgba(0,0,0,0.08)]">
-      {/* Header: label + badge */}
+      {/* Header: name + badge */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <p className="text-[13px] text-text-tertiary font-sans tracking-wide uppercase mb-1">
-            Venue
+          <p
+            className="text-[17px] font-light text-text-primary font-serif tracking-wide"
+            title={venue.venueName}
+          >
+            {venue.venueName}
           </p>
           <p
-            className="text-[15px] font-mono text-text-primary"
+            className="text-[13px] font-mono text-text-tertiary mt-1"
             title={venue.address}
           >
             {truncateAddress(venue.address)}

@@ -46,6 +46,10 @@ export function useVenueState(venueAddress: Address | undefined) {
   return useReadContract(venueReadConfig(venueAddress, "state"));
 }
 
+export function useVenueName(venueAddress: Address | undefined) {
+  return useReadContract(venueReadConfig(venueAddress, "venueName"));
+}
+
 export function useVenueCurrentRaised(venueAddress: Address | undefined) {
   return useReadContract(venueReadConfig(venueAddress, "currentRaised"));
 }
