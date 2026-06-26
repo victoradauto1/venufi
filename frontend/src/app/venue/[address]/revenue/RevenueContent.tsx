@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import type { Address } from "viem";
 import { useAccount } from "wagmi";
 import {
+  useVenueName,
   useVenueState,
   useVenueTotalRevenue,
   useVenuePending,
@@ -92,14 +93,19 @@ export function RevenueContent({ venueAddress }: RevenueContentProps) {
   const { address: userAddress, isConnected } = useAccount();
 
   // ── On-chain reads ────────────────────────────────────────────────────
+  const { data: nameRaw, isLoading: nameLoading } = useVenueName(address);
   const { data: stateRaw, isLoading: stateLoading } = useVenueState(address);
   const { data: totalRevenue, isLoading: revenueLoading } = useVenueTotalRevenue(address);
   const { data: pendingRaw, isLoading: pendingLoading } = useVenuePending(address, userAddress);
   const { data: userShares, isLoading: sharesLoading } = useVenueUserShares(address, userAddress);
   const { data: fundingGoal, isLoading: goalLoading } = useVenueFundingGoal(address);
 
-  const isLoading = stateLoading || revenueLoading || goalLoading;
+  const isLoading = nameLoading || stateLoading || revenueLoading || goalLoading;
   const isUserLoading = pendingLoading || sharesLoading;
+
+  const venueName = (typeof nameRaw === "string" && nameRaw.trim().length > 0)
+    ? nameRaw.trim()
+    : "VenueFi Campaign";
 
   // ── Write hook ────────────────────────────────────────────────────────
   const {
@@ -154,9 +160,10 @@ export function RevenueContent({ venueAddress }: RevenueContentProps) {
   );
 
   // ── Validation ────────────────────────────────────────────────────────
-  const isActivePhase = venueState === VenueState.ACTIVE;
+  // Contract allows claims in both ACTIVE and ENDED states (rejects only FUNDING)
+  const canClaimPhase = venueState === VenueState.ACTIVE || venueState === VenueState.ENDED;
   const isTxInProgress = tx.status === "pendingSignature" || tx.status === "confirming";
-  const canClaim = isConnected && hasPending && isActivePhase && !isTxInProgress;
+  const canClaim = isConnected && hasPending && canClaimPhase && !isTxInProgress;
 
   // ── Handlers ──────────────────────────────────────────────────────────
   const handleClaim = useCallback(async () => {
@@ -228,7 +235,7 @@ export function RevenueContent({ venueAddress }: RevenueContentProps) {
       <div className="w-full lg:flex-1 rounded-sm border border-border bg-surface p-9 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
         <div className="flex items-center justify-between mb-7">
           <h2 className="text-[21px] font-light text-text-primary font-serif tracking-wide">
-            Historic Cultural Venue
+            {venueName}
           </h2>
           <span className="inline-flex items-center gap-1.5 rounded-sm bg-accent-muted px-3.5 py-1.5 text-[12px] font-medium tracking-[0.15em] uppercase text-accent font-sans">
             <span className="h-1.5 w-1.5 rounded-full bg-accent" />
@@ -315,9 +322,9 @@ export function RevenueContent({ venueAddress }: RevenueContentProps) {
             <p className="mt-3 text-[13px] text-amber-500/80 font-sans font-light text-center">
               Connect your wallet to claim revenue.
             </p>
-          ) : !isActivePhase ? (
+          ) : venueState === VenueState.FUNDING ? (
             <p className="mt-3 text-[13px] text-text-tertiary/80 font-sans font-light text-center">
-              Revenue claims are only available while the venue is active.
+              Revenue claims are available once the venue is active.
             </p>
           ) : (
             <p className="mt-3 text-[13px] text-text-tertiary font-sans font-light text-center">

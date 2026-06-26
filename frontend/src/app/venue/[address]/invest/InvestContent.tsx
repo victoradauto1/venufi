@@ -5,6 +5,7 @@ import type { Address } from "viem";
 import { parseEther } from "viem";
 import { useAccount } from "wagmi";
 import {
+  useVenueName,
   useVenueState,
   useVenueFundingGoal,
   useVenueCurrentRaised,
@@ -122,12 +123,17 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
   const { address: userAddress, isConnected } = useAccount();
 
   // ── On-chain reads ────────────────────────────────────────────────────
+  const { data: nameRaw, isLoading: nameLoading } = useVenueName(address);
   const { data: stateRaw, isLoading: stateLoading } = useVenueState(address);
   const { data: fundingGoal, isLoading: goalLoading } = useVenueFundingGoal(address);
   const { data: currentRaised, isLoading: raisedLoading } = useVenueCurrentRaised(address);
   const { data: userShares } = useVenueUserShares(address, userAddress);
 
-  const isLoading = stateLoading || goalLoading || raisedLoading;
+  const isLoading = nameLoading || stateLoading || goalLoading || raisedLoading;
+
+  const venueName = (typeof nameRaw === "string" && nameRaw.trim().length > 0)
+    ? nameRaw.trim()
+    : "VenueFi Campaign";
 
   // ── Write hook ────────────────────────────────────────────────────────
   const {
@@ -272,7 +278,7 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
       <div className="w-full lg:flex-1 rounded-sm border border-border bg-surface p-9 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
         <div className="flex items-center justify-between mb-7">
           <h2 className="text-[21px] font-light text-text-primary font-serif tracking-wide">
-            Historic Cultural Venue
+            {venueName}
           </h2>
           <span className="inline-flex items-center gap-1.5 rounded-sm bg-accent-muted px-3.5 py-1.5 text-[12px] font-medium tracking-[0.15em] uppercase text-accent font-sans">
             <span className="h-1.5 w-1.5 rounded-full bg-accent" />
