@@ -6,4 +6,4 @@
  */
 
 export const venueFactoryAddress =
-  "0xcB01478d57e6eF8849D72E6bb20a3277cfF05F82" as const;
+  "0x109782836C086A49aD91EDc3CF208A673A05AF2e" as const;
