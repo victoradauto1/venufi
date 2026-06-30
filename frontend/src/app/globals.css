@@ -143,3 +143,19 @@ html {
     0 1px 2px rgba(0, 0, 0, 0.1),
     inset 0 2px 4px rgba(0, 0, 0, 0.1);
 }
+
+/* ── Deployment Receipt Entrance ── */
+@keyframes receipt-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-receipt-enter {
+  animation: receipt-enter 0.4s ease-out both;
+}

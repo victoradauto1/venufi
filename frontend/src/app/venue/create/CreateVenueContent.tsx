@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo } from "react";
+import Link from "next/link";
 import { parseEther, decodeEventLog } from "viem";
 import { useAccount } from "wagmi";
 import {
@@ -192,6 +193,16 @@ export function CreateVenueContent() {
   const [tx, setTx] = useState<TransactionState>(IDLE_TX_STATE);
   const [createdVenueAddress, setCreatedVenueAddress] = useState<string | null>(null);
 
+  // ── Deployed venue snapshot (captures form values for the success receipt) ──
+  interface DeployedSnapshot {
+    venueName: string;
+    fundingGoal: string;
+    fundingDuration: string;
+    operatingDuration: string;
+    operatorFeePercentage: string;
+  }
+  const [deployedSnapshot, setDeployedSnapshot] = useState<DeployedSnapshot | null>(null);
+
   useEffect(() => {
     if (isConfirmed && txHash) {
       setTx({ status: "success", hash: txHash });
@@ -242,6 +253,15 @@ export function CreateVenueContent() {
     setCreatedVenueAddress(null);
     setTx({ status: "pendingSignature" });
 
+    // Snapshot current form values for the success receipt
+    setDeployedSnapshot({
+      venueName: venueName.trim(),
+      fundingGoal,
+      fundingDuration,
+      operatingDuration,
+      operatorFeePercentage,
+    });
+
     try {
       const params: CreateVenueParams = {
         venueName: venueName.trim(),
@@ -271,7 +291,7 @@ export function CreateVenueContent() {
     reset,
   ]);
 
-  // Clear form on success
+  // Clear form fields on success (snapshot already captured at submit time)
   useEffect(() => {
     if (tx.status === "success") {
       setVenueName("");
@@ -283,7 +303,168 @@ export function CreateVenueContent() {
     }
   }, [tx.status]);
 
+  // ── "Create Another" handler ────────────────────────────────────────────
+  const handleCreateAnother = useCallback(() => {
+    reset();
+    setTx(IDLE_TX_STATE);
+    setCreatedVenueAddress(null);
+    setDeployedSnapshot(null);
+    setVenueName("");
+    setFundingGoal("");
+    setFundingDuration("");
+    setOperatingDuration("");
+    setOperatorFeePercentage("");
+    setTouched({});
+  }, [reset]);
+
+  // ── Derived: show success receipt? ──────────────────────────────────────
+  const showReceipt = tx.status === "success" && deployedSnapshot !== null;
+
   // ── Render ──────────────────────────────────────────────────────────────
+  if (showReceipt) {
+    return (
+      <section className="flex flex-col items-center px-6 pb-24 max-w-2xl mx-auto w-full">
+        <div className="w-full animate-receipt-enter">
+          {/* ─── Deployment Receipt ─── */}
+          <div className="w-full rounded-sm border border-border bg-surface p-9 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
+            {/* Success header */}
+            <div className="flex flex-col items-center text-center mb-8">
+              <SuccessCheckmark />
+              <h2 className="mt-5 text-3xl sm:text-4xl font-light tracking-[-0.02em] text-text-primary font-serif leading-[1.15]">
+                Venue Successfully Deployed
+              </h2>
+              <p className="mt-3 text-[15px] text-text-secondary font-sans font-light leading-relaxed max-w-md">
+                Your campaign is now live on-chain and ready to receive investments.
+              </p>
+            </div>
+
+            <div className="h-px w-full bg-border mb-8" />
+
+            {/* Venue summary grid */}
+            <h3 className="text-[13px] font-normal tracking-[0.3em] uppercase text-text-secondary mb-6 font-sans">
+              Deployment Receipt
+            </h3>
+
+            <div className="grid grid-cols-2 gap-5">
+              {/* Venue Name — full width */}
+              <div className="col-span-2">
+                <p className="text-[13px] text-text-tertiary mb-1 font-sans tracking-wide uppercase">
+                  Venue Name
+                </p>
+                <p className="text-xl font-light text-text-primary font-serif tracking-tight">
+                  {deployedSnapshot.venueName}
+                </p>
+              </div>
+
+              {/* Venue Address — full width */}
+              {createdVenueAddress && (
+                <div className="col-span-2">
+                  <p className="text-[13px] text-text-tertiary mb-1 font-sans tracking-wide uppercase">
+                    Contract Address
+                  </p>
+                  <p
+                    className="text-[15px] font-mono text-text-primary break-all leading-relaxed"
+                    title={createdVenueAddress}
+                  >
+                    {createdVenueAddress}
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <p className="text-[13px] text-text-tertiary mb-1 font-sans tracking-wide uppercase">
+                  Funding Goal
+                </p>
+                <p className="text-xl font-light text-text-primary font-serif tracking-tight">
+                  {deployedSnapshot.fundingGoal} ETH
+                </p>
+              </div>
+
+              <div>
+                <p className="text-[13px] text-text-tertiary mb-1 font-sans tracking-wide uppercase">
+                  Funding Duration
+                </p>
+                <p className="text-xl font-light text-text-primary font-serif tracking-tight">
+                  {deployedSnapshot.fundingDuration} days
+                </p>
+              </div>
+
+              <div>
+                <p className="text-[13px] text-text-tertiary mb-1 font-sans tracking-wide uppercase">
+                  Operating Duration
+                </p>
+                <p className="text-xl font-light text-text-primary font-serif tracking-tight">
+                  {deployedSnapshot.operatingDuration} days
+                </p>
+              </div>
+
+              <div>
+                <p className="text-[13px] text-text-tertiary mb-1 font-sans tracking-wide uppercase">
+                  Operator Fee
+                </p>
+                <p className="text-xl font-light text-text-primary font-serif tracking-tight">
+                  {deployedSnapshot.operatorFeePercentage}%
+                </p>
+              </div>
+            </div>
+
+            {/* Transaction hash */}
+            {tx.hash && (
+              <>
+                <div className="mt-6 h-px w-full bg-border" />
+                <div className="mt-5">
+                  <p className="text-[13px] text-text-tertiary mb-1.5 font-sans tracking-wide uppercase">
+                    Transaction
+                  </p>
+                  <a
+                    href={`${EXPLORER_URL}/tx/${tx.hash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[13px] font-mono text-accent hover:text-accent-hover transition-colors duration-200 underline underline-offset-2"
+                  >
+                    {tx.hash.slice(0, 10)}…{tx.hash.slice(-8)}
+                  </a>
+                </div>
+              </>
+            )}
+
+            <div className="mt-8 h-px w-full bg-border" />
+
+            {/* Actions */}
+            <div className="mt-8 flex flex-col gap-3">
+              {/* Primary CTA */}
+              {createdVenueAddress && (
+                <Link
+                  href={`/venue/${createdVenueAddress}`}
+                  className="btn-gold flex items-center justify-center gap-2.5 w-full rounded-sm px-6 py-3.5 text-[14px] font-semibold tracking-wide font-sans no-underline"
+                >
+                  View Venue →
+                </Link>
+              )}
+
+              {/* Secondary actions */}
+              <div className="flex gap-3">
+                <Link
+                  href="/venues"
+                  className="flex-1 flex items-center justify-center gap-2 rounded-sm border border-border bg-background px-5 py-3 text-[13px] font-medium text-text-secondary font-sans tracking-wide hover:border-accent/50 hover:text-text-primary transition-colors duration-200 no-underline"
+                >
+                  Browse All Venues
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleCreateAnother}
+                  className="flex-1 flex items-center justify-center gap-2 rounded-sm border border-border bg-background px-5 py-3 text-[13px] font-medium text-text-secondary font-sans tracking-wide hover:border-accent/50 hover:text-text-primary transition-colors duration-200 cursor-pointer"
+                >
+                  Create Another
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="flex flex-col items-center px-6 pb-24 max-w-2xl mx-auto w-full">
       {/* ─── Form Card ─── */}
@@ -461,34 +642,6 @@ export function CreateVenueContent() {
         <TransactionStatus state={tx} explorerUrl={EXPLORER_URL} />
       </div>
 
-      {/* ─── Success: Created Venue Address ─── */}
-      {createdVenueAddress && tx.status === "success" && (
-        <div className="w-full mt-8 rounded-sm border border-green-500/30 bg-green-500/5 p-9">
-          <h3 className="text-[13px] font-normal tracking-[0.3em] uppercase text-green-400 mb-5 font-sans">
-            Venue Deployed
-          </h3>
-
-          <p className="text-[13px] text-text-tertiary mb-3 font-sans tracking-wide uppercase">
-            Venue Address
-          </p>
-          <p
-            className="text-[15px] font-mono text-text-primary break-all leading-relaxed"
-            title={createdVenueAddress}
-          >
-            {createdVenueAddress}
-          </p>
-
-          <div className="mt-5 h-px w-full bg-border" />
-
-          <a
-            href={`/venue/${createdVenueAddress}`}
-            className="mt-5 inline-flex items-center gap-2 text-[13px] text-accent font-sans font-medium tracking-wide hover:underline underline-offset-2 transition-colors duration-200"
-          >
-            View Venue →
-          </a>
-        </div>
-      )}
-
       {/* ─── Parameter Preview ─── */}
       {(venueName || fundingGoal || fundingDuration || operatingDuration || operatorFeePercentage) && (
         <div className="w-full mt-8 rounded-sm border border-border bg-surface-raised/50 p-9">
@@ -573,3 +726,25 @@ function DeployIcon() {
     </svg>
   );
 }
+
+function SuccessCheckmark() {
+  return (
+    <div className="w-12 h-12 rounded-full border border-accent/30 bg-accent-muted flex items-center justify-center">
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="text-accent"
+      >
+        <polyline points="20 6 9 17 4 12" />
+      </svg>
+    </div>
+  );
+}
+
