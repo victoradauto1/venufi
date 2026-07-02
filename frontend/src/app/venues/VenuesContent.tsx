@@ -15,6 +15,7 @@ import {
   type VenueStateValue,
 } from "@/hooks/web3/useVenue";
 import { formatEth, computeFundingPercent } from "@/lib/format";
+import { getVenueAction } from "@/lib/venueActions";
 import { Stat } from "../components/Stat";
 
 // ---------------------------------------------------------------------------
@@ -231,6 +232,17 @@ function VenueCard({ venue }: { venue: VenueData }) {
     venue.fundingGoal,
   );
 
+  // ── State-aware CTA ────────────────────────────────────────────────────
+  const action = getVenueAction(venue.state, venue.address);
+
+  // Button style driven by action variant
+  const ctaClassName =
+    action.variant === "primary"
+      ? "w-full inline-flex items-center justify-center gap-2 rounded-sm bg-btn-bg px-6 py-3 text-[13px] font-medium text-btn-text tracking-wide transition-colors duration-200 hover:bg-btn-hover font-sans"
+      : action.variant === "secondary"
+        ? "w-full inline-flex items-center justify-center gap-2 rounded-sm border border-border bg-background px-6 py-3 text-[13px] font-medium text-text-secondary tracking-wide transition-colors duration-200 hover:border-accent/50 hover:text-text-primary font-sans"
+        : "w-full inline-flex items-center justify-center gap-2 rounded-sm border border-border bg-surface px-6 py-3 text-[13px] font-medium text-text-tertiary tracking-wide transition-colors duration-200 hover:text-text-secondary font-sans";
+
   return (
     <div className="rounded-sm border border-border bg-surface p-8 shadow-[0_2px_12px_rgba(0,0,0,0.04)] flex flex-col transition-shadow duration-200 hover:shadow-[0_4px_20px_rgba(0,0,0,0.08)]">
       {/* Header: name + badge */}
@@ -292,13 +304,13 @@ function VenueCard({ venue }: { venue: VenueData }) {
         </p>
       </div>
 
-      {/* Action */}
+      {/* Action — state-aware CTA */}
       <div className="mt-auto">
         <Link
-          href={`/venue/${venue.address}`}
-          className="w-full inline-flex items-center justify-center gap-2 rounded-sm bg-btn-bg px-6 py-3 text-[13px] font-medium text-btn-text tracking-wide transition-colors duration-200 hover:bg-btn-hover font-sans"
+          href={action.href}
+          className={ctaClassName}
         >
-          View Venue
+          {action.label}
         </Link>
       </div>
     </div>

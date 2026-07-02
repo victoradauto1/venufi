@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { Address } from "viem";
 import {
   useVenueName,
@@ -11,6 +12,7 @@ import {
   type VenueStateValue,
 } from "@/hooks/web3/useVenue";
 import { formatEth, computeFundingPercent } from "@/lib/format";
+import { getVenueAction } from "@/lib/venueActions";
 import { Stat } from "../../components/Stat";
 
 // ---------------------------------------------------------------------------
@@ -130,6 +132,49 @@ export function VenueOverview({ venueAddress }: VenueOverviewProps) {
         <p className="mt-3 text-right text-[13px] text-text-tertiary font-sans tracking-wide">
           {fundingPercent}% funded
         </p>
+
+        {/* ─── State-aware CTA ─── */}
+        {(() => {
+          const action = getVenueAction(venueState, venueAddress);
+
+          if (venueState === VenueState.FUNDING) {
+            return (
+              <>
+                <div className="mt-6 h-px w-full bg-border" />
+                <Link
+                  href={action.href}
+                  className="mt-6 w-full inline-flex items-center justify-center gap-2.5 rounded-sm bg-btn-bg px-8 py-3.5 text-[15px] font-medium text-btn-text tracking-wide transition-colors duration-200 hover:bg-btn-hover font-sans"
+                >
+                  Invest Now
+                </Link>
+              </>
+            );
+          }
+
+          if (venueState === VenueState.ACTIVE) {
+            return (
+              <>
+                <div className="mt-6 h-px w-full bg-border" />
+                <Link
+                  href={action.href}
+                  className="mt-6 w-full inline-flex items-center justify-center gap-2.5 rounded-sm border border-border bg-background px-8 py-3.5 text-[15px] font-medium text-text-secondary tracking-wide transition-colors duration-200 hover:border-accent/50 hover:text-text-primary font-sans"
+                >
+                  Revenue Dashboard
+                </Link>
+              </>
+            );
+          }
+
+          // ENDED — no button, subtle informational message
+          return (
+            <>
+              <div className="mt-6 h-px w-full bg-border" />
+              <p className="mt-4 text-center text-[13px] text-text-tertiary/70 font-sans font-light italic">
+                This funding campaign has ended.
+              </p>
+            </>
+          );
+        })()}
       </div>
 
       {/* ─── Lifecycle ─── */}

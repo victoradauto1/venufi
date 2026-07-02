@@ -432,23 +432,31 @@ export function CreateVenueContent() {
 
             {/* Actions */}
             <div className="mt-8 flex flex-col gap-3">
-              {/* Primary CTA */}
+              {/* Primary CTA — Invest Now (newly deployed = always FUNDING) */}
               {createdVenueAddress && (
                 <Link
-                  href={`/venue/${createdVenueAddress}`}
+                  href={`/venue/${createdVenueAddress}/invest`}
                   className="btn-gold flex items-center justify-center gap-2.5 w-full rounded-sm px-6 py-3.5 text-[14px] font-semibold tracking-wide font-sans no-underline"
                 >
-                  View Venue →
+                  Invest Now →
                 </Link>
               )}
 
               {/* Secondary actions */}
               <div className="flex gap-3">
+                {createdVenueAddress && (
+                  <Link
+                    href={`/venue/${createdVenueAddress}`}
+                    className="flex-1 flex items-center justify-center gap-2 rounded-sm border border-border bg-background px-5 py-3 text-[13px] font-medium text-text-secondary font-sans tracking-wide hover:border-accent/50 hover:text-text-primary transition-colors duration-200 no-underline"
+                  >
+                    View Venue
+                  </Link>
+                )}
                 <Link
                   href="/venues"
                   className="flex-1 flex items-center justify-center gap-2 rounded-sm border border-border bg-background px-5 py-3 text-[13px] font-medium text-text-secondary font-sans tracking-wide hover:border-accent/50 hover:text-text-primary transition-colors duration-200 no-underline"
                 >
-                  Browse All Venues
+                  Browse Venues
                 </Link>
                 <button
                   type="button"
