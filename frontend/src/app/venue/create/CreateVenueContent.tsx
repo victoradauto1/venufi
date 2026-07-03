@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo } from "react";
-import Link from "next/link";
 import { parseEther, decodeEventLog } from "viem";
 import { useAccount } from "wagmi";
 import {
@@ -11,6 +10,11 @@ import {
 import { venueFactoryAbi } from "@/lib/contracts/venueFactory";
 import { TransactionButton } from "@/components/tx/TransactionButton";
 import { TransactionStatus } from "@/components/tx/TransactionStatus";
+import {
+  TransactionReceipt,
+  type ReceiptRow,
+  type ReceiptAction,
+} from "@/components/tx/TransactionReceipt";
 import { IDLE_TX_STATE, type TransactionState } from "@/types/transaction";
 
 // ---------------------------------------------------------------------------
@@ -322,154 +326,71 @@ export function CreateVenueContent() {
 
   // ── Render ──────────────────────────────────────────────────────────────
   if (showReceipt) {
+    const receiptRows: ReceiptRow[] = [
+      {
+        label: "Venue Name",
+        value: deployedSnapshot.venueName,
+        fullWidth: true,
+      },
+      ...(createdVenueAddress
+        ? [{
+            label: "Contract Address",
+            value: createdVenueAddress,
+            fullWidth: true,
+            mono: true,
+          }]
+        : []),
+      {
+        label: "Funding Goal",
+        value: `${deployedSnapshot.fundingGoal} ETH`,
+      },
+      {
+        label: "Funding Duration",
+        value: `${deployedSnapshot.fundingDuration} days`,
+      },
+      {
+        label: "Operating Duration",
+        value: `${deployedSnapshot.operatingDuration} days`,
+      },
+      {
+        label: "Operator Fee",
+        value: `${deployedSnapshot.operatorFeePercentage}%`,
+      },
+    ];
+
+    const receiptActions: ReceiptAction[] = [
+      ...(createdVenueAddress
+        ? [{
+            label: "Invest Now →",
+            href: `/venue/${createdVenueAddress}/invest`,
+            primary: true,
+          }]
+        : []),
+      ...(createdVenueAddress
+        ? [{
+            label: "View Venue",
+            href: `/venue/${createdVenueAddress}`,
+          }]
+        : []),
+      {
+        label: "Browse Venues",
+        href: "/venues",
+      },
+      {
+        label: "Create Another",
+        onClick: handleCreateAnother,
+      },
+    ];
+
     return (
-      <section className="flex flex-col items-center px-6 pb-24 max-w-2xl mx-auto w-full">
-        <div className="w-full animate-receipt-enter">
-          {/* ─── Deployment Receipt ─── */}
-          <div className="w-full rounded-sm border border-border bg-surface p-9 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
-            {/* Success header */}
-            <div className="flex flex-col items-center text-center mb-8">
-              <SuccessCheckmark />
-              <h2 className="mt-5 text-3xl sm:text-4xl font-light tracking-[-0.02em] text-text-primary font-serif leading-[1.15]">
-                Venue Successfully Deployed
-              </h2>
-              <p className="mt-3 text-[15px] text-text-secondary font-sans font-light leading-relaxed max-w-md">
-                Your campaign is now live on-chain and ready to receive investments.
-              </p>
-            </div>
-
-            <div className="h-px w-full bg-border mb-8" />
-
-            {/* Venue summary grid */}
-            <h3 className="text-[13px] font-normal tracking-[0.3em] uppercase text-text-secondary mb-6 font-sans">
-              Deployment Receipt
-            </h3>
-
-            <div className="grid grid-cols-2 gap-5">
-              {/* Venue Name — full width */}
-              <div className="col-span-2">
-                <p className="text-[13px] text-text-tertiary mb-1 font-sans tracking-wide uppercase">
-                  Venue Name
-                </p>
-                <p className="text-xl font-light text-text-primary font-serif tracking-tight">
-                  {deployedSnapshot.venueName}
-                </p>
-              </div>
-
-              {/* Venue Address — full width */}
-              {createdVenueAddress && (
-                <div className="col-span-2">
-                  <p className="text-[13px] text-text-tertiary mb-1 font-sans tracking-wide uppercase">
-                    Contract Address
-                  </p>
-                  <p
-                    className="text-[15px] font-mono text-text-primary break-all leading-relaxed"
-                    title={createdVenueAddress}
-                  >
-                    {createdVenueAddress}
-                  </p>
-                </div>
-              )}
-
-              <div>
-                <p className="text-[13px] text-text-tertiary mb-1 font-sans tracking-wide uppercase">
-                  Funding Goal
-                </p>
-                <p className="text-xl font-light text-text-primary font-serif tracking-tight">
-                  {deployedSnapshot.fundingGoal} ETH
-                </p>
-              </div>
-
-              <div>
-                <p className="text-[13px] text-text-tertiary mb-1 font-sans tracking-wide uppercase">
-                  Funding Duration
-                </p>
-                <p className="text-xl font-light text-text-primary font-serif tracking-tight">
-                  {deployedSnapshot.fundingDuration} days
-                </p>
-              </div>
-
-              <div>
-                <p className="text-[13px] text-text-tertiary mb-1 font-sans tracking-wide uppercase">
-                  Operating Duration
-                </p>
-                <p className="text-xl font-light text-text-primary font-serif tracking-tight">
-                  {deployedSnapshot.operatingDuration} days
-                </p>
-              </div>
-
-              <div>
-                <p className="text-[13px] text-text-tertiary mb-1 font-sans tracking-wide uppercase">
-                  Operator Fee
-                </p>
-                <p className="text-xl font-light text-text-primary font-serif tracking-tight">
-                  {deployedSnapshot.operatorFeePercentage}%
-                </p>
-              </div>
-            </div>
-
-            {/* Transaction hash */}
-            {tx.hash && (
-              <>
-                <div className="mt-6 h-px w-full bg-border" />
-                <div className="mt-5">
-                  <p className="text-[13px] text-text-tertiary mb-1.5 font-sans tracking-wide uppercase">
-                    Transaction
-                  </p>
-                  <a
-                    href={`${EXPLORER_URL}/tx/${tx.hash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[13px] font-mono text-accent hover:text-accent-hover transition-colors duration-200 underline underline-offset-2"
-                  >
-                    {tx.hash.slice(0, 10)}…{tx.hash.slice(-8)}
-                  </a>
-                </div>
-              </>
-            )}
-
-            <div className="mt-8 h-px w-full bg-border" />
-
-            {/* Actions */}
-            <div className="mt-8 flex flex-col gap-3">
-              {/* Primary CTA — Invest Now (newly deployed = always FUNDING) */}
-              {createdVenueAddress && (
-                <Link
-                  href={`/venue/${createdVenueAddress}/invest`}
-                  className="btn-gold flex items-center justify-center gap-2.5 w-full rounded-sm px-6 py-3.5 text-[14px] font-semibold tracking-wide font-sans no-underline"
-                >
-                  Invest Now →
-                </Link>
-              )}
-
-              {/* Secondary actions */}
-              <div className="flex gap-3">
-                {createdVenueAddress && (
-                  <Link
-                    href={`/venue/${createdVenueAddress}`}
-                    className="flex-1 flex items-center justify-center gap-2 rounded-sm border border-border bg-background px-5 py-3 text-[13px] font-medium text-text-secondary font-sans tracking-wide hover:border-accent/50 hover:text-text-primary transition-colors duration-200 no-underline"
-                  >
-                    View Venue
-                  </Link>
-                )}
-                <Link
-                  href="/venues"
-                  className="flex-1 flex items-center justify-center gap-2 rounded-sm border border-border bg-background px-5 py-3 text-[13px] font-medium text-text-secondary font-sans tracking-wide hover:border-accent/50 hover:text-text-primary transition-colors duration-200 no-underline"
-                >
-                  Browse Venues
-                </Link>
-                <button
-                  type="button"
-                  onClick={handleCreateAnother}
-                  className="flex-1 flex items-center justify-center gap-2 rounded-sm border border-border bg-background px-5 py-3 text-[13px] font-medium text-text-secondary font-sans tracking-wide hover:border-accent/50 hover:text-text-primary transition-colors duration-200 cursor-pointer"
-                >
-                  Create Another
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      <TransactionReceipt
+        title="Venue Successfully Deployed"
+        subtitle="Your campaign is now live on-chain and ready to receive investments."
+        receiptHeading="Deployment Receipt"
+        rows={receiptRows}
+        txHash={tx.hash}
+        actions={receiptActions}
+      />
     );
   }
 
@@ -734,25 +655,3 @@ function DeployIcon() {
     </svg>
   );
 }
-
-function SuccessCheckmark() {
-  return (
-    <div className="w-12 h-12 rounded-full border border-accent/30 bg-accent-muted flex items-center justify-center">
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="22"
-        height="22"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="text-accent"
-      >
-        <polyline points="20 6 9 17 4 12" />
-      </svg>
-    </div>
-  );
-}
-
