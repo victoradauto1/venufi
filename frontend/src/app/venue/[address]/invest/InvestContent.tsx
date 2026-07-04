@@ -19,6 +19,11 @@ import { formatEth, computeFundingPercent } from "@/lib/format";
 import { Stat } from "../../../components/Stat";
 import { TransactionButton } from "@/components/tx/TransactionButton";
 import { TransactionStatus } from "@/components/tx/TransactionStatus";
+import {
+  TransactionReceipt,
+  type ReceiptRow,
+  type ReceiptAction,
+} from "@/components/tx/TransactionReceipt";
 import { IDLE_TX_STATE, type TransactionState } from "@/types/transaction";
 
 // ---------------------------------------------------------------------------
@@ -111,6 +116,16 @@ function humanizeError(err: unknown): string {
 }
 
 // ---------------------------------------------------------------------------
+// Investment Snapshot — captures values at submit time for the receipt
+// ---------------------------------------------------------------------------
+
+interface InvestmentSnapshot {
+  venueName: string;
+  ethAmount: string;
+  venueAddress: string;
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -159,6 +174,9 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
   //   5. useEffect to clear input on success
   //
   const [tx, setTx] = useState<TransactionState>(IDLE_TX_STATE);
+
+  // ── Investment snapshot (captures form values for the success receipt) ──
+  const [investmentSnapshot, setInvestmentSnapshot] = useState<InvestmentSnapshot | null>(null);
 
   useEffect(() => {
     if (isConfirmed && txHash) {
@@ -210,6 +228,13 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
     reset();
     setTx({ status: "pendingSignature" });
 
+    // Snapshot current values for the success receipt
+    setInvestmentSnapshot({
+      venueName,
+      ethAmount: ethAmount.trim(),
+      venueAddress,
+    });
+
     try {
       const value = parseEther(ethAmount);
       await invest(value);
@@ -220,7 +245,7 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
         error: humanizeError(err),
       });
     }
-  }, [canInvest, ethAmount, invest, reset]);
+  }, [canInvest, ethAmount, invest, reset, venueName, venueAddress]);
 
   // Clear input after success
   useEffect(() => {
@@ -228,6 +253,17 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
       setEthAmount("");
     }
   }, [tx.status]);
+
+  // ── "Make Another Investment" handler ─────────────────────────────────
+  const handleInvestAnother = useCallback(() => {
+    reset();
+    setTx(IDLE_TX_STATE);
+    setInvestmentSnapshot(null);
+    setEthAmount("");
+  }, [reset]);
+
+  // ── Derived: show success receipt? ────────────────────────────────────
+  const showReceipt = tx.status === "success" && investmentSnapshot !== null;
 
   // ── Loading skeleton ──────────────────────────────────────────────────
   if (isLoading) {
@@ -268,6 +304,67 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
           </div>
         </div>
       </section>
+    );
+  }
+
+  // ── Investment Receipt ────────────────────────────────────────────────
+  if (showReceipt) {
+    const receiptRows: ReceiptRow[] = [
+      {
+        label: "Venue Name",
+        value: investmentSnapshot.venueName,
+        fullWidth: true,
+      },
+      {
+        label: "Investment Amount",
+        value: `${investmentSnapshot.ethAmount} ETH`,
+      },
+      {
+        label: "Network",
+        value: "Sepolia",
+      },
+      {
+        label: "Venue Contract",
+        value: investmentSnapshot.venueAddress,
+        fullWidth: true,
+        mono: true,
+      },
+      {
+        label: "Confirmation Status",
+        value: "Confirmed ✓",
+      },
+    ];
+
+    const receiptActions: ReceiptAction[] = [
+      {
+        label: "View Venue →",
+        href: `/venue/${venueAddress}`,
+        primary: true,
+      },
+      {
+        label: "Browse Venues",
+        href: "/venues",
+      },
+      {
+        label: "Make Another Investment",
+        onClick: handleInvestAnother,
+      },
+    ];
+
+    return (
+      <TransactionReceipt
+        title="Investment Successfully Confirmed"
+        subtitle="Thank you for supporting this venue. Your investment has been recorded on-chain."
+        receiptHeading="Investment Receipt"
+        rows={receiptRows}
+        txHash={tx.hash}
+        whatsNext={[
+          "Your funds are now locked in the funding campaign.",
+          "Once the funding goal is reached, the venue enters the ACTIVE phase.",
+          "During the ACTIVE phase you'll become eligible to claim revenue distributions.",
+        ]}
+        actions={receiptActions}
+      />
     );
   }
 
