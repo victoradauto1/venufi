@@ -79,6 +79,13 @@ contract VenueFi is ReentrancyGuard {
 
     event CapitalWithdrawn(address indexed operator, uint256 amount);
 
+    event PartialInvestmentAccepted(
+        address indexed investor,
+        uint256 requested,
+        uint256 accepted,
+        uint256 refunded
+    );
+
     /*//////////////////////////////////////////////////////////////
                                 ERRORS
     //////////////////////////////////////////////////////////////*/
@@ -112,6 +119,9 @@ contract VenueFi is ReentrancyGuard {
 
     /// @notice depositRevenue called after endTime
     error CampaignAlreadyEnded();
+
+    /// @notice invest() called when totalRaised already equals fundingGoal
+    error FundingAlreadyFull();
 
     /*//////////////////////////////////////////////////////////////
                             CONSTRUCTOR
@@ -147,20 +157,39 @@ contract VenueFi is ReentrancyGuard {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Deposit ETH during FUNDING and receive shares
-    function invest() external payable {
+    /// @dev Accepts partial investments when msg.value exceeds remaining capacity.
+    ///      Excess ETH is refunded immediately within the same transaction.
+    function invest() external payable nonReentrant {
         if (state != State.FUNDING) revert NotFunding();
         if (block.timestamp >= deadline) revert FundingEnded();
         if (msg.value == 0) revert ZeroValue();
 
-        totalRaised += msg.value;
-        currentRaised += msg.value;
-        balance[msg.sender] += msg.value;
-        totalSupply += msg.value;
+        // --- Checks: determine accepted amount ---
+        uint256 remaining = fundingGoal - totalRaised;
+        uint256 accepted = msg.value <= remaining ? msg.value : remaining;
+        uint256 excess = msg.value - accepted;
+
+        // If funding goal already reached, nothing to accept
+        if (accepted == 0) revert FundingAlreadyFull();
+
+        // --- Effects: update all state with accepted amount only ---
+        totalRaised += accepted;
+        currentRaised += accepted;
+        balance[msg.sender] += accepted;
+        totalSupply += accepted;
 
         // prevents capturing past revenue
         rewardDebt[msg.sender] = (balance[msg.sender] * accRevenuePerToken) / PRECISION;
 
-        emit Invested(msg.sender, msg.value);
+        emit Invested(msg.sender, accepted);
+
+        // --- Interactions: refund excess ETH ---
+        if (excess > 0) {
+            emit PartialInvestmentAccepted(msg.sender, msg.value, accepted, excess);
+
+            (bool success, ) = msg.sender.call{value: excess}("");
+            if (!success) revert TransferFailed();
+        }
     }
 
     function getUserShares(address user) external view returns (uint256) {

@@ -121,6 +121,207 @@ describe("VenueFi", function () {
     });
   });
 
+  describe("Partial Investment", function () {
+    // Deploy a venue with a 10 ETH funding goal for partial investment tests
+    async function deployPartialFixture() {
+      const [owner, user1, user2] = await ethers.getSigners();
+
+      const VenueFi = await ethers.getContractFactory("VenueFi");
+      const venue = await VenueFi.deploy(
+        "Partial Test Venue",
+        3600,
+        31536000,
+        ethers.parseEther("10"),
+        owner.address,
+        10n,
+      );
+
+      await venue.waitForDeployment();
+
+      return { venue, owner, user1, user2 };
+    }
+
+    it("should accept full amount when below remaining capacity", async function () {
+      const { venue, user1 } = await loadFixture(deployPartialFixture);
+      const investAmount = ethers.parseEther("3");
+      await venue.connect(user1).invest({ value: investAmount });
+
+      expect(await venue.totalRaised()).to.equal(investAmount);
+      expect(await venue.getUserShares(user1.address)).to.equal(investAmount);
+    });
+
+    it("should accept full amount when exactly matching remaining capacity", async function () {
+      const { venue, user1, user2 } = await loadFixture(deployPartialFixture);
+      // user1 invests 7 ETH, leaving 3 ETH remaining
+      await venue.connect(user1).invest({ value: ethers.parseEther("7") });
+      // user2 invests exactly 3 ETH
+      await venue.connect(user2).invest({ value: ethers.parseEther("3") });
+
+      expect(await venue.totalRaised()).to.equal(ethers.parseEther("10"));
+      expect(await venue.getUserShares(user2.address)).to.equal(
+        ethers.parseEther("3"),
+      );
+    });
+
+    it("should accept only remaining capacity when investment exceeds it", async function () {
+      const { venue, user1, user2 } = await loadFixture(deployPartialFixture);
+      // user1 invests 7 ETH, leaving 3 ETH remaining
+      await venue.connect(user1).invest({ value: ethers.parseEther("7") });
+      // user2 sends 5 ETH — only 3 ETH should be accepted
+      await venue.connect(user2).invest({ value: ethers.parseEther("5") });
+
+      expect(await venue.getUserShares(user2.address)).to.equal(
+        ethers.parseEther("3"),
+      );
+    });
+
+    it("should revert FundingAlreadyFull when goal is already reached", async function () {
+      const { venue, user1, user2 } = await loadFixture(deployPartialFixture);
+      // user1 fills the entire goal
+      await venue.connect(user1).invest({ value: ethers.parseEther("10") });
+
+      await expect(
+        venue.connect(user2).invest({ value: ethers.parseEther("1") }),
+      ).to.be.revertedWithCustomError(venue, "FundingAlreadyFull");
+    });
+
+    it("should set totalRaised to only the accepted amount", async function () {
+      const { venue, user1, user2 } = await loadFixture(deployPartialFixture);
+      await venue.connect(user1).invest({ value: ethers.parseEther("8") });
+      // 2 ETH remaining, user sends 5 ETH → accepted = 2 ETH
+      await venue.connect(user2).invest({ value: ethers.parseEther("5") });
+
+      expect(await venue.totalRaised()).to.equal(ethers.parseEther("10"));
+    });
+
+    it("should set currentRaised to only the accepted amount", async function () {
+      const { venue, user1, user2 } = await loadFixture(deployPartialFixture);
+      await venue.connect(user1).invest({ value: ethers.parseEther("8") });
+      await venue.connect(user2).invest({ value: ethers.parseEther("5") });
+
+      // currentRaised = 8 + 2 (accepted) = 10
+      expect(await venue.currentRaised()).to.equal(ethers.parseEther("10"));
+    });
+
+    it("should set totalSupply to only the accepted amount", async function () {
+      const { venue, user1, user2 } = await loadFixture(deployPartialFixture);
+      await venue.connect(user1).invest({ value: ethers.parseEther("8") });
+      await venue.connect(user2).invest({ value: ethers.parseEther("5") });
+
+      // totalSupply = 8 + 2 (accepted) = 10
+      expect(await venue.totalSupply()).to.equal(ethers.parseEther("10"));
+    });
+
+    it("should set investor balance to only the accepted amount", async function () {
+      const { venue, user1, user2 } = await loadFixture(deployPartialFixture);
+      await venue.connect(user1).invest({ value: ethers.parseEther("8") });
+      // 2 ETH remaining, user2 sends 5 ETH → balance[user2] = 2
+      await venue.connect(user2).invest({ value: ethers.parseEther("5") });
+
+      expect(await venue.getUserShares(user2.address)).to.equal(
+        ethers.parseEther("2"),
+      );
+    });
+
+    it("should set rewardDebt based on accepted amount only", async function () {
+      const { venue, user1, user2 } = await loadFixture(deployPartialFixture);
+      await venue.connect(user1).invest({ value: ethers.parseEther("8") });
+      await venue.connect(user2).invest({ value: ethers.parseEther("5") });
+
+      // No revenue deposited → accRevenuePerToken = 0 → rewardDebt = 0
+      expect(await venue.rewardDebt(user2.address)).to.equal(0n);
+    });
+
+    it("should refund the correct excess amount to the investor", async function () {
+      const { venue, user1, user2 } = await loadFixture(deployPartialFixture);
+      await venue.connect(user1).invest({ value: ethers.parseEther("7") });
+
+      // 3 ETH remaining, user2 sends 5 ETH → refund = 2 ETH
+      const balanceBefore = await ethers.provider.getBalance(user2.address);
+      const tx = await venue
+        .connect(user2)
+        .invest({ value: ethers.parseEther("5") });
+      const receipt = await tx.wait();
+      const gasUsed = receipt.gasUsed * receipt.gasPrice;
+      const balanceAfter = await ethers.provider.getBalance(user2.address);
+
+      // Net cost = accepted (3 ETH) + gas
+      expect(balanceBefore - balanceAfter - gasUsed).to.equal(
+        ethers.parseEther("3"),
+      );
+    });
+
+    it("should emit PartialInvestmentAccepted event on partial acceptance", async function () {
+      const { venue, user1, user2 } = await loadFixture(deployPartialFixture);
+      await venue.connect(user1).invest({ value: ethers.parseEther("7") });
+
+      // 3 ETH remaining, user2 sends 5 ETH
+      await expect(
+        venue.connect(user2).invest({ value: ethers.parseEther("5") }),
+      )
+        .to.emit(venue, "PartialInvestmentAccepted")
+        .withArgs(
+          user2.address,
+          ethers.parseEther("5"), // requested
+          ethers.parseEther("3"), // accepted
+          ethers.parseEther("2"), // refunded
+        );
+    });
+
+    it("should emit Invested event with accepted amount (not msg.value)", async function () {
+      const { venue, user1, user2 } = await loadFixture(deployPartialFixture);
+      await venue.connect(user1).invest({ value: ethers.parseEther("7") });
+
+      // 3 ETH remaining, user2 sends 5 ETH → Invested should show 3 ETH
+      await expect(
+        venue.connect(user2).invest({ value: ethers.parseEther("5") }),
+      )
+        .to.emit(venue, "Invested")
+        .withArgs(user2.address, ethers.parseEther("3"));
+    });
+
+    it("should not emit PartialInvestmentAccepted when full amount is accepted", async function () {
+      const { venue, user1 } = await loadFixture(deployPartialFixture);
+
+      // 10 ETH remaining, user sends 3 ETH → no excess
+      await expect(
+        venue.connect(user1).invest({ value: ethers.parseEther("3") }),
+      ).to.not.emit(venue, "PartialInvestmentAccepted");
+    });
+
+    it("should allow finalizeFunding after partial acceptance fills the goal", async function () {
+      const { venue, user1, user2 } = await loadFixture(deployPartialFixture);
+      await venue.connect(user1).invest({ value: ethers.parseEther("7") });
+      // Partial: sends 5, accepted 3, goal exactly reached
+      await venue.connect(user2).invest({ value: ethers.parseEther("5") });
+
+      expect(await venue.totalRaised()).to.equal(ethers.parseEther("10"));
+      await venue.finalizeFunding();
+      expect(await venue.state()).to.equal(1); // ACTIVE
+    });
+
+    it("should handle multiple investors with the last one partially accepted", async function () {
+      const { venue, owner, user1, user2 } =
+        await loadFixture(deployPartialFixture);
+
+      await venue.connect(user1).invest({ value: ethers.parseEther("6") });
+      await venue.connect(user2).invest({ value: ethers.parseEther("3") });
+      // 1 ETH remaining, owner sends 4 ETH → accepted = 1 ETH
+      await venue.connect(owner).invest({ value: ethers.parseEther("4") });
+
+      expect(await venue.totalRaised()).to.equal(ethers.parseEther("10"));
+      expect(await venue.getUserShares(user1.address)).to.equal(
+        ethers.parseEther("6"),
+      );
+      expect(await venue.getUserShares(user2.address)).to.equal(
+        ethers.parseEther("3"),
+      );
+      expect(await venue.getUserShares(owner.address)).to.equal(
+        ethers.parseEther("1"),
+      );
+    });
+  });
+
   describe("Finalize Funding", function () {
     it("should go to ACTIVE if totalRaised >= fundingGoal", async function () {
       const { venue, user1 } = await loadFixture(deployFixture);
@@ -396,19 +597,30 @@ describe("VenueFi", function () {
     });
 
     it("should split pending proportionally between investors", async function () {
-      const { venue, user1, user2, owner } = await loadFixture(deployFixture);
-      await venue.connect(user1).invest({ value: ethers.parseEther("1") });
-      await venue.connect(user2).invest({ value: ethers.parseEther("0.5") });
-      await venue.finalizeFunding();
-      await venue
+      const { user1, user2, owner } = await loadFixture(deployFixture);
+      // Deploy a venue with a larger goal to accommodate both investments
+      const VenueFi = await ethers.getContractFactory("VenueFi");
+      const venue2 = await VenueFi.deploy(
+        "Multi Investor Venue",
+        3600,
+        31536000,
+        ethers.parseEther("1.5"),
+        owner.address,
+        10n,
+      );
+      await venue2.waitForDeployment();
+      await venue2.connect(user1).invest({ value: ethers.parseEther("1") });
+      await venue2.connect(user2).invest({ value: ethers.parseEther("0.5") });
+      await venue2.finalizeFunding();
+      await venue2
         .connect(owner)
         .depositRevenue({ value: ethers.parseEther("0.3") });
       // investor portion = 0.27 ETH (90% of 0.3)
       // user1: 2/3 of 0.27 = 0.18, user2: 1/3 of 0.27 = 0.09
-      expect(await venue.pending(user1.address)).to.equal(
+      expect(await venue2.pending(user1.address)).to.equal(
         ethers.parseEther("0.18"),
       );
-      expect(await venue.pending(user2.address)).to.equal(
+      expect(await venue2.pending(user2.address)).to.equal(
         ethers.parseEther("0.09"),
       );
     });
@@ -540,19 +752,30 @@ describe("VenueFi", function () {
     });
 
     it("should split claim correctly between two investors", async function () {
-      const { venue, user1, user2, owner } = await loadFixture(deployFixture);
-      await venue.connect(user1).invest({ value: ethers.parseEther("1") });
-      await venue.connect(user2).invest({ value: ethers.parseEther("0.5") });
-      await venue.finalizeFunding();
-      await venue
+      const { user1, user2, owner } = await loadFixture(deployFixture);
+      // Deploy a venue with a larger goal to accommodate both investments
+      const VenueFi = await ethers.getContractFactory("VenueFi");
+      const venue2 = await VenueFi.deploy(
+        "Multi Investor Venue",
+        3600,
+        31536000,
+        ethers.parseEther("1.5"),
+        owner.address,
+        10n,
+      );
+      await venue2.waitForDeployment();
+      await venue2.connect(user1).invest({ value: ethers.parseEther("1") });
+      await venue2.connect(user2).invest({ value: ethers.parseEther("0.5") });
+      await venue2.finalizeFunding();
+      await venue2
         .connect(owner)
         .depositRevenue({ value: ethers.parseEther("0.3") });
 
-      await venue.connect(user1).claimRevenue();
-      expect(await venue.pending(user1.address)).to.equal(0n);
+      await venue2.connect(user1).claimRevenue();
+      expect(await venue2.pending(user1.address)).to.equal(0n);
 
-      await venue.connect(user2).claimRevenue();
-      expect(await venue.pending(user2.address)).to.equal(0n);
+      await venue2.connect(user2).claimRevenue();
+      expect(await venue2.pending(user2.address)).to.equal(0n);
     });
 
     it("should accumulate new pending after claim", async function () {
@@ -579,7 +802,7 @@ describe("VenueFi", function () {
         "Test Venue",
         3600,
         31536000,
-        ethers.parseEther("0.05"),
+        ethers.parseEther("0.1"),
         owner.address,
         10n,
       );
