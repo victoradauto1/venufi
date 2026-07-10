@@ -144,11 +144,59 @@ html {
     inset 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-/* ── Deployment Receipt Entrance ── */
+/* ── Receipt Entrance ── */
 @keyframes receipt-enter {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-receipt-enter {
+  animation: receipt-enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ── Animated Success Checkmark ── */
+@keyframes check-draw {
+  from { stroke-dashoffset: 24; }
+  to   { stroke-dashoffset: 0; }
+}
+
+@keyframes check-ring-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(183, 155, 108, 0.35); }
+  70%  { box-shadow: 0 0 0 12px rgba(183, 155, 108, 0); }
+  100% { box-shadow: 0 0 0 12px rgba(183, 155, 108, 0); }
+}
+
+@keyframes check-scale {
+  0%   { transform: scale(0.5); opacity: 0; }
+  60%  { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.animate-check-icon {
+  animation: check-scale 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+}
+
+.animate-check-ring {
+  animation: check-ring-pulse 1.2s ease-out 0.6s both;
+}
+
+.animate-check-stroke {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: check-draw 0.4s ease-out 0.45s forwards;
+}
+
+/* ── Staggered Receipt Rows ── */
+@keyframes row-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
@@ -156,6 +204,37 @@ html {
   }
 }
 
-.animate-receipt-enter {
-  animation: receipt-enter 0.4s ease-out both;
+.animate-row-enter {
+  animation: row-enter 0.35s ease-out both;
+}
+
+.animate-row-delay-0 { animation-delay: 0.25s; }
+.animate-row-delay-1 { animation-delay: 0.32s; }
+.animate-row-delay-2 { animation-delay: 0.39s; }
+.animate-row-delay-3 { animation-delay: 0.46s; }
+.animate-row-delay-4 { animation-delay: 0.53s; }
+.animate-row-delay-5 { animation-delay: 0.60s; }
+.animate-row-delay-6 { animation-delay: 0.67s; }
+.animate-row-delay-7 { animation-delay: 0.74s; }
+
+/* ── Receipt Highlighted Value ── */
+.receipt-highlight {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* ── Reduced Motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .animate-receipt-enter,
+  .animate-check-icon,
+  .animate-check-ring,
+  .animate-check-stroke,
+  .animate-row-enter {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .animate-check-stroke {
+    stroke-dashoffset: 0 !important;
+  }
 }

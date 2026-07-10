@@ -123,6 +123,11 @@ interface InvestmentSnapshot {
   venueName: string;
   ethAmount: string;
   venueAddress: string;
+  /** Present only when the investment was partially accepted */
+  partial?: {
+    accepted: string;
+    refunded: string;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -200,6 +205,12 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
   const raisedEth = currentRaised != null ? formatEth(currentRaised as bigint) : "—";
   const userSharesEth = userShares != null ? formatEth(userShares as bigint) : "0";
 
+  const remainingFunding =
+    fundingGoal != null && currentRaised != null
+      ? (fundingGoal as bigint) - (currentRaised as bigint)
+      : undefined;
+  const remainingEth = remainingFunding != null ? formatEth(remainingFunding) : "—";
+
   const fundingPercent =
     fundingGoal != null && currentRaised != null
       ? computeFundingPercent(currentRaised as bigint, fundingGoal as bigint)
@@ -220,6 +231,25 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
   const isTxInProgress = tx.status === "pendingSignature" || tx.status === "confirming";
   const canInvest = isConnected && isValidAmount && isFundingPhase && !isTxInProgress;
 
+  // ── Partial-refund detection ───────────────────────────────────────────
+  const exceedsRemaining = (() => {
+    if (!isValidAmount || remainingFunding == null) return false;
+    try {
+      return parseEther(ethAmount.trim()) > remainingFunding;
+    } catch {
+      return false;
+    }
+  })();
+  const acceptedEth = remainingFunding != null ? formatEth(remainingFunding) : "0";
+  const refundEth = (() => {
+    if (!exceedsRemaining || remainingFunding == null) return "0";
+    try {
+      return formatEth(parseEther(ethAmount.trim()) - remainingFunding);
+    } catch {
+      return "0";
+    }
+  })();
+
   // ── Handlers ──────────────────────────────────────────────────────────
   const handleInvest = useCallback(async () => {
     if (!canInvest) return;
@@ -228,11 +258,16 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
     reset();
     setTx({ status: "pendingSignature" });
 
-    // Snapshot current values for the success receipt
     setInvestmentSnapshot({
       venueName,
       ethAmount: ethAmount.trim(),
       venueAddress,
+      ...(exceedsRemaining && {
+        partial: {
+          accepted: acceptedEth,
+          refunded: refundEth,
+        },
+      }),
     });
 
     try {
@@ -245,7 +280,7 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
         error: humanizeError(err),
       });
     }
-  }, [canInvest, ethAmount, invest, reset, venueName, venueAddress]);
+  }, [canInvest, ethAmount, invest, reset, venueName, venueAddress, exceedsRemaining, acceptedEth, refundEth]);
 
   // Clear input after success
   useEffect(() => {
@@ -315,10 +350,31 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
         value: investmentSnapshot.venueName,
         fullWidth: true,
       },
-      {
-        label: "Investment Amount",
-        value: `${investmentSnapshot.ethAmount} ETH`,
-      },
+      // Partial investment: show requested / accepted / refunded
+      // Full investment: show single "Investment Amount"
+      ...(investmentSnapshot.partial
+        ? [
+            {
+              label: "Requested Amount",
+              value: `${investmentSnapshot.ethAmount} ETH`,
+            },
+            {
+              label: "Accepted Amount",
+              value: `${investmentSnapshot.partial.accepted} ETH`,
+              highlight: true,
+            },
+            {
+              label: "Refunded Amount",
+              value: `${investmentSnapshot.partial.refunded} ETH`,
+            },
+          ]
+        : [
+            {
+              label: "Investment Amount",
+              value: `${investmentSnapshot.ethAmount} ETH`,
+              highlight: true,
+            },
+          ]),
       {
         label: "Network",
         value: "Sepolia",
@@ -385,9 +441,10 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
 
         <div className="h-px w-full bg-border mb-7" />
 
-        <div className="grid grid-cols-2 gap-7">
+        <div className="grid grid-cols-3 gap-7">
           <Stat label="Funding Goal" value={`${goalEth} ETH`} />
           <Stat label="Total Raised" value={`${raisedEth} ETH`} />
+          <Stat label="Remaining Capacity" value={`${remainingEth} ETH`} />
         </div>
 
         <div className="mt-7 h-px w-full bg-border overflow-hidden">
@@ -461,6 +518,30 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
             <p className="mt-2.5 text-[13px] text-text-tertiary font-sans font-light">
               Shares are proportional to invested ETH.
             </p>
+          )}
+
+          {/* Partial-refund warning */}
+          {exceedsRemaining && (
+            <div className="mt-4 rounded-sm border border-amber-500/30 bg-amber-500/5 px-5 py-4">
+              <p className="text-[13px] text-amber-400 font-sans font-medium mb-1.5">
+                Partial Investment Notice
+              </p>
+              <p className="text-[13px] text-amber-400/80 font-sans font-light leading-relaxed">
+                You entered{" "}
+                <span className="font-medium text-amber-300">
+                  {ethAmount.trim()} ETH
+                </span>
+                . Only{" "}
+                <span className="font-medium text-amber-300">
+                  {acceptedEth} ETH
+                </span>{" "}
+                can still be invested. The remaining{" "}
+                <span className="font-medium text-amber-300">
+                  {refundEth} ETH
+                </span>{" "}
+                will be automatically refunded.
+              </p>
+            </div>
           )}
 
           <div className="mt-7">
