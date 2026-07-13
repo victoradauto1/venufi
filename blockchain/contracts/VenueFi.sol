@@ -181,14 +181,21 @@ contract VenueFi is ReentrancyGuard {
         // prevents capturing past revenue
         rewardDebt[msg.sender] = (balance[msg.sender] * accRevenuePerToken) / PRECISION;
 
+        // --- Auto-transition: FUNDING → ACTIVE when goal is reached ---
+        if (totalRaised == fundingGoal) {
+            endTime = block.timestamp + operatingDuration;
+            state = State.ACTIVE;
+            emit StateChanged(State.ACTIVE);
+        }
+
         emit Invested(msg.sender, accepted);
 
         // --- Interactions: refund excess ETH ---
         if (excess > 0) {
-            emit PartialInvestmentAccepted(msg.sender, msg.value, accepted, excess);
-
             (bool success, ) = msg.sender.call{value: excess}("");
             if (!success) revert TransferFailed();
+
+            emit PartialInvestmentAccepted(msg.sender, msg.value, accepted, excess);
         }
     }
 
