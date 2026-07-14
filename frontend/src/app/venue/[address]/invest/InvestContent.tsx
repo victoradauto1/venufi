@@ -128,6 +128,9 @@ interface InvestmentSnapshot {
     accepted: string;
     refunded: string;
   };
+  /** True when this investment caused the funding goal to be fully reached,
+   *  triggering the automatic FUNDING → ACTIVE transition. */
+  goalReached: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -258,10 +261,25 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
     reset();
     setTx({ status: "pendingSignature" });
 
+    // Determine whether this investment will complete the funding goal.
+    // If partial: accepted == remaining → goal exactly reached.
+    // If full: inputWei >= remaining → goal reached.
+    const willReachGoal = (() => {
+      if (fundingGoal == null || currentRaised == null) return false;
+      try {
+        const inputWei = parseEther(ethAmount.trim());
+        const remaining = (fundingGoal as bigint) - (currentRaised as bigint);
+        return inputWei >= remaining && remaining > 0n;
+      } catch {
+        return false;
+      }
+    })();
+
     setInvestmentSnapshot({
       venueName,
       ethAmount: ethAmount.trim(),
       venueAddress,
+      goalReached: willReachGoal,
       ...(exceedsRemaining && {
         partial: {
           accepted: acceptedEth,
@@ -391,12 +409,22 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
       },
     ];
 
+    const goalReached = investmentSnapshot.goalReached;
+
     const receiptActions: ReceiptAction[] = [
       {
-        label: "View Venue →",
+        label: goalReached ? "View Active Venue →" : "View Venue →",
         href: `/venue/${venueAddress}`,
         primary: true,
       },
+      ...(goalReached
+        ? [
+            {
+              label: "Go to Revenue",
+              href: `/venue/${venueAddress}/revenue`,
+            },
+          ]
+        : []),
       {
         label: "Browse Venues",
         href: "/venues",
@@ -410,17 +438,41 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
     return (
       <TransactionReceipt
         title="Investment Successfully Confirmed"
-        subtitle="Thank you for supporting this venue. Your investment has been recorded on-chain."
+        subtitle={
+          goalReached
+            ? "Congratulations! Your investment completed the funding round. The venue is now ACTIVE."
+            : "Thank you for supporting this venue. Your investment has been recorded on-chain."
+        }
         receiptHeading="Investment Receipt"
         rows={receiptRows}
         txHash={tx.hash}
-        whatsNext={[
-          "Your funds are now locked in the funding campaign.",
-          "Once the funding goal is reached, the venue enters the ACTIVE phase.",
-          "During the ACTIVE phase you'll become eligible to claim revenue distributions.",
-        ]}
+        whatsNext={
+          goalReached
+            ? [
+                "The funding round is complete — the venue is now in the ACTIVE phase.",
+                "The operator can now withdraw capital and begin revenue operations.",
+                "You are eligible to claim revenue distributions as they are deposited.",
+              ]
+            : [
+                "Your funds are now locked in the funding campaign.",
+                "Once the funding goal is reached, the venue enters the ACTIVE phase.",
+                "During the ACTIVE phase you'll become eligible to claim revenue distributions.",
+              ]
+        }
         actions={receiptActions}
-      />
+      >
+        {goalReached && (
+          <div className="mt-7 rounded-sm border border-accent/30 bg-accent-muted/40 px-6 py-5">
+            <p className="text-[13px] font-semibold tracking-[0.1em] uppercase text-accent font-sans mb-2">
+              Funding Goal Reached
+            </p>
+            <p className="text-[14px] text-text-secondary font-sans font-light leading-relaxed">
+              This investment completed the fundraising campaign.
+              The venue has automatically entered the <span className="font-medium text-accent">ACTIVE</span> phase.
+            </p>
+          </div>
+        )}
+      </TransactionReceipt>
     );
   }
 

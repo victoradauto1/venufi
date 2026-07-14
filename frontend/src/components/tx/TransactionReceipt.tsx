@@ -54,6 +54,8 @@ export interface TransactionReceiptProps {
   whatsNext?: string[];
   /** Action buttons shown at the bottom. */
   actions: ReceiptAction[];
+  /** Optional custom content rendered between the receipt grid and What's Next. */
+  children?: React.ReactNode;
 }
 
 // ---------------------------------------------------------------------------
@@ -68,6 +70,7 @@ export function TransactionReceipt({
   txHash,
   whatsNext,
   actions,
+  children,
 }: TransactionReceiptProps) {
   const primaryAction = actions.find((a) => a.primary);
   const secondaryActions = actions.filter((a) => !a.primary);
@@ -158,6 +161,9 @@ export function TransactionReceipt({
               </div>
             </>
           )}
+
+          {/* ─── Custom Content (injected by caller) ─── */}
+          {children}
 
           {/* ─── What's Next ─── */}
           {whatsNext && whatsNext.length > 0 && (
