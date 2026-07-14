@@ -35,4 +35,10 @@ contract VenueFiHarness is VenueFi {
     function forceEndTime(uint256 _endTime) external {
         endTime = _endTime;
     }
+
+    /// @dev Force totalRaised to simulate a legacy campaign that reached the goal
+    ///      before auto-transition existed (state stays FUNDING)
+    function forceTotalRaised(uint256 _amount) external {
+        totalRaised = _amount;
+    }
 }

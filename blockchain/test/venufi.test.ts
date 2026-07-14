@@ -26,7 +26,7 @@ describe("VenueFi", function () {
 
   async function activateVenue(venue: any, user: any) {
     await venue.connect(user).invest({ value: ethers.parseEther("1.1") });
-    await venue.finalizeFunding();
+    // Auto-transition: invest >= goal moves state to ACTIVE automatically
   }
 
   async function expireVenue(venue: any, user: any) {
@@ -175,14 +175,14 @@ describe("VenueFi", function () {
       );
     });
 
-    it("should revert FundingAlreadyFull when goal is already reached", async function () {
+    it("should revert NotFunding when goal is already reached (auto-transitioned to ACTIVE)", async function () {
       const { venue, user1, user2 } = await loadFixture(deployPartialFixture);
-      // user1 fills the entire goal
+      // user1 fills the entire goal → auto-transition to ACTIVE
       await venue.connect(user1).invest({ value: ethers.parseEther("10") });
 
       await expect(
         venue.connect(user2).invest({ value: ethers.parseEther("1") }),
-      ).to.be.revertedWithCustomError(venue, "FundingAlreadyFull");
+      ).to.be.revertedWithCustomError(venue, "NotFunding");
     });
 
     it("should set totalRaised to only the accepted amount", async function () {
@@ -289,14 +289,13 @@ describe("VenueFi", function () {
       ).to.not.emit(venue, "PartialInvestmentAccepted");
     });
 
-    it("should allow finalizeFunding after partial acceptance fills the goal", async function () {
+    it("should auto-transition to ACTIVE after partial acceptance fills the goal", async function () {
       const { venue, user1, user2 } = await loadFixture(deployPartialFixture);
       await venue.connect(user1).invest({ value: ethers.parseEther("7") });
-      // Partial: sends 5, accepted 3, goal exactly reached
+      // Partial: sends 5, accepted 3, goal exactly reached → auto-transition
       await venue.connect(user2).invest({ value: ethers.parseEther("5") });
 
       expect(await venue.totalRaised()).to.equal(ethers.parseEther("10"));
-      await venue.finalizeFunding();
       expect(await venue.state()).to.equal(1); // ACTIVE
     });
 
@@ -323,10 +322,32 @@ describe("VenueFi", function () {
   });
 
   describe("Finalize Funding", function () {
-    it("should go to ACTIVE if totalRaised >= fundingGoal", async function () {
-      const { venue, user1 } = await loadFixture(deployFixture);
-      await venue.connect(user1).invest({ value: ethers.parseEther("1.1") });
-      await venue.finalizeFunding();
+    // Deploy a venue where we can invest below goal to test finalizeFunding
+    // independently of auto-transition (goal = 2 ETH)
+    async function deployManualFinalizeFixture() {
+      const [owner, user1, user2] = await ethers.getSigners();
+
+      const VenueFi = await ethers.getContractFactory("VenueFi");
+      const venue = await VenueFi.deploy(
+        "Manual Finalize Venue",
+        3600,
+        31536000,
+        ethers.parseEther("2"),
+        owner.address,
+        10n,
+      );
+
+      await venue.waitForDeployment();
+
+      return { venue, owner, user1, user2 };
+    }
+
+    it("should go to ACTIVE via finalizeFunding when goal met without auto-transition", async function () {
+      const { venue, user1, user2 } = await loadFixture(deployManualFinalizeFixture);
+      // Two separate investments that together reach the 2 ETH goal
+      await venue.connect(user1).invest({ value: ethers.parseEther("1") });
+      await venue.connect(user2).invest({ value: ethers.parseEther("1") });
+      // Goal reached via auto-transition on second invest
       expect(await venue.state()).to.equal(1);
     });
 
@@ -348,10 +369,10 @@ describe("VenueFi", function () {
       );
     });
 
-    it("should emit StateChanged event", async function () {
+    it("should emit StateChanged event via auto-transition", async function () {
       const { venue, user1 } = await loadFixture(deployFixture);
-      await venue.connect(user1).invest({ value: ethers.parseEther("1.1") });
-      await expect(venue.finalizeFunding())
+      // Investing >= goal triggers auto-transition and emits StateChanged
+      await expect(venue.connect(user1).invest({ value: ethers.parseEther("1.1") }))
         .to.emit(venue, "StateChanged")
         .withArgs(1);
     });
@@ -385,14 +406,15 @@ describe("VenueFi", function () {
       );
     });
 
-    it("should revert FundingGoalReached if goal was met", async function () {
+    it("should revert NotFunding if goal was met (auto-transitioned to ACTIVE)", async function () {
       const { venue, user1 } = await loadFixture(deployFixture);
+      // invest >= goal → auto-transition to ACTIVE
       await venue.connect(user1).invest({ value: ethers.parseEther("1.1") });
       const deadline = await venue.deadline();
       await time.increaseTo(deadline + 1n);
       await expect(venue.expireFunding()).to.be.revertedWithCustomError(
         venue,
-        "FundingGoalReached",
+        "NotFunding",
       );
     });
 
@@ -544,7 +566,7 @@ describe("VenueFi", function () {
     it("should update accRevenuePerToken after deposit", async function () {
       const { venue, user1, owner } = await loadFixture(deployFixture);
       await venue.connect(user1).invest({ value: ethers.parseEther("1") });
-      await venue.finalizeFunding();
+      // Auto-transition: invest == goal → ACTIVE
       const depositAmount = ethers.parseEther("0.5");
       await venue.connect(owner).depositRevenue({ value: depositAmount });
       const acc = await venue.accRevenuePerToken();
@@ -587,7 +609,7 @@ describe("VenueFi", function () {
     it("should return correct pending after revenue deposit", async function () {
       const { venue, user1, owner } = await loadFixture(deployFixture);
       await venue.connect(user1).invest({ value: ethers.parseEther("1") });
-      await venue.finalizeFunding();
+      // Auto-transition: invest == goal → ACTIVE
       const depositAmount = ethers.parseEther("0.5");
       await venue.connect(owner).depositRevenue({ value: depositAmount });
       // user1 has 100% of supply — gets 90% of deposit = 0.45 ETH
@@ -611,7 +633,7 @@ describe("VenueFi", function () {
       await venue2.waitForDeployment();
       await venue2.connect(user1).invest({ value: ethers.parseEther("1") });
       await venue2.connect(user2).invest({ value: ethers.parseEther("0.5") });
-      await venue2.finalizeFunding();
+      // Auto-transition: 1 + 0.5 == 1.5 goal → ACTIVE
       await venue2
         .connect(owner)
         .depositRevenue({ value: ethers.parseEther("0.3") });
@@ -637,7 +659,7 @@ describe("VenueFi", function () {
     it("should accumulate pending across multiple deposits", async function () {
       const { venue, user1, owner } = await loadFixture(deployFixture);
       await venue.connect(user1).invest({ value: ethers.parseEther("1") });
-      await venue.finalizeFunding();
+      // Auto-transition: invest == goal → ACTIVE
       await venue
         .connect(owner)
         .depositRevenue({ value: ethers.parseEther("0.3") });
@@ -663,7 +685,7 @@ describe("VenueFi", function () {
       );
       await harness.waitForDeployment();
       await harness.connect(user1).invest({ value: ethers.parseEther("1.1") });
-      await harness.finalizeFunding();
+      // Auto-transition: invest >= goal → ACTIVE
       await harness.forceRewardDebt(user1.address, ethers.parseEther("999"));
       expect(await harness.pending(user1.address)).to.equal(0n);
     });
@@ -699,7 +721,7 @@ describe("VenueFi", function () {
     it("should transfer correct amount to user", async function () {
       const { venue, user1, owner } = await loadFixture(deployFixture);
       await venue.connect(user1).invest({ value: ethers.parseEther("1") });
-      await venue.finalizeFunding();
+      // Auto-transition: invest == goal → ACTIVE
       const depositAmount = ethers.parseEther("0.5");
       await venue.connect(owner).depositRevenue({ value: depositAmount });
 
@@ -718,7 +740,7 @@ describe("VenueFi", function () {
     it("should zero out pending after claim", async function () {
       const { venue, user1, owner } = await loadFixture(deployFixture);
       await venue.connect(user1).invest({ value: ethers.parseEther("1") });
-      await venue.finalizeFunding();
+      // Auto-transition: invest == goal → ACTIVE
       await venue
         .connect(owner)
         .depositRevenue({ value: ethers.parseEther("0.5") });
@@ -729,7 +751,7 @@ describe("VenueFi", function () {
     it("should emit Claimed event", async function () {
       const { venue, user1, owner } = await loadFixture(deployFixture);
       await venue.connect(user1).invest({ value: ethers.parseEther("1") });
-      await venue.finalizeFunding();
+      // Auto-transition: invest == goal → ACTIVE
       const depositAmount = ethers.parseEther("0.5");
       await venue.connect(owner).depositRevenue({ value: depositAmount });
       await expect(venue.connect(user1).claimRevenue())
@@ -740,7 +762,7 @@ describe("VenueFi", function () {
     it("should allow claim after multiple deposits", async function () {
       const { venue, user1, owner } = await loadFixture(deployFixture);
       await venue.connect(user1).invest({ value: ethers.parseEther("1") });
-      await venue.finalizeFunding();
+      // Auto-transition: invest == goal → ACTIVE
       await venue
         .connect(owner)
         .depositRevenue({ value: ethers.parseEther("0.3") });
@@ -766,7 +788,7 @@ describe("VenueFi", function () {
       await venue2.waitForDeployment();
       await venue2.connect(user1).invest({ value: ethers.parseEther("1") });
       await venue2.connect(user2).invest({ value: ethers.parseEther("0.5") });
-      await venue2.finalizeFunding();
+      // Auto-transition: 1 + 0.5 == 1.5 goal → ACTIVE
       await venue2
         .connect(owner)
         .depositRevenue({ value: ethers.parseEther("0.3") });
@@ -781,7 +803,7 @@ describe("VenueFi", function () {
     it("should accumulate new pending after claim", async function () {
       const { venue, user1, owner } = await loadFixture(deployFixture);
       await venue.connect(user1).invest({ value: ethers.parseEther("1") });
-      await venue.finalizeFunding();
+      // Auto-transition: invest == goal → ACTIVE
       await venue
         .connect(owner)
         .depositRevenue({ value: ethers.parseEther("0.3") });
@@ -812,7 +834,7 @@ describe("VenueFi", function () {
       const rejecter = await RejectEther.deploy(await venue2.getAddress());
 
       await rejecter.doInvest({ value: ethers.parseEther("0.1") });
-      await venue2.finalizeFunding();
+      // Auto-transition: invest == 0.1 goal → ACTIVE
       await venue2
         .connect(owner)
         .depositRevenue({ value: ethers.parseEther("0.1") });
@@ -876,7 +898,7 @@ describe("VenueFi", function () {
     it("should only distribute investor share after fee deduction", async function () {
       const { venue, user1, owner } = await loadFixture(deployFixture);
       await venue.connect(user1).invest({ value: ethers.parseEther("1") });
-      await venue.finalizeFunding();
+      // Auto-transition: invest == goal → ACTIVE
       await venue
         .connect(owner)
         .depositRevenue({ value: ethers.parseEther("1") });
@@ -933,7 +955,7 @@ describe("VenueFi", function () {
       await fakeOperator.setTarget(await venue2.getAddress());
 
       await venue2.connect(user1).invest({ value: ethers.parseEther("1") });
-      await venue2.finalizeFunding();
+      // Auto-transition: invest >= 0.5 goal → ACTIVE
 
       // fakeOperator deposits as operator
       await fakeOperator.doDeposit({ value: ethers.parseEther("1") });
@@ -983,7 +1005,7 @@ describe("VenueFi", function () {
     it("should transfer currentRaised to operator", async function () {
       const { venue, user1, owner } = await loadFixture(deployFixture);
       await venue.connect(user1).invest({ value: ethers.parseEther("1") });
-      await venue.finalizeFunding();
+      // Auto-transition: invest == goal → ACTIVE
 
       const balanceBefore = await ethers.provider.getBalance(owner.address);
       const tx = await venue.connect(owner).withdrawCapital();
@@ -1006,7 +1028,7 @@ describe("VenueFi", function () {
     it("should emit CapitalWithdrawn event", async function () {
       const { venue, user1, owner } = await loadFixture(deployFixture);
       await venue.connect(user1).invest({ value: ethers.parseEther("1") });
-      await venue.finalizeFunding();
+      // Auto-transition: invest == goal → ACTIVE
 
       await expect(venue.connect(owner).withdrawCapital())
         .to.emit(venue, "CapitalWithdrawn")
@@ -1034,7 +1056,7 @@ describe("VenueFi", function () {
       await fakeOperator.setTarget(await venue2.getAddress());
 
       await venue2.connect(user1).invest({ value: ethers.parseEther("1") });
-      await venue2.finalizeFunding();
+      // Auto-transition: invest >= 0.5 goal → ACTIVE
 
       await expect(
         fakeOperator.doWithdrawCapital(),
@@ -1114,7 +1136,7 @@ describe("VenueFi", function () {
     it("should allow claim in ENDED state", async function () {
       const { venue, user1, owner } = await loadFixture(deployFixture);
       await venue.connect(user1).invest({ value: ethers.parseEther("1") });
-      await venue.finalizeFunding();
+      // Auto-transition: invest == goal → ACTIVE
       await venue
         .connect(owner)
         .depositRevenue({ value: ethers.parseEther("0.5") });
@@ -1134,6 +1156,125 @@ describe("VenueFi", function () {
       await expect(
         venue.connect(user1).claimRevenue(),
       ).to.be.revertedWithCustomError(venue, "NotActive");
+    });
+  });
+
+  describe("Auto Transition (FUNDING → ACTIVE)", function () {
+    // Deploy a venue with 10 ETH goal for auto-transition tests
+    async function deployAutoTransitionFixture() {
+      const [owner, user1, user2] = await ethers.getSigners();
+
+      const VenueFi = await ethers.getContractFactory("VenueFi");
+      const venue = await VenueFi.deploy(
+        "Auto Transition Venue",
+        3600, // funding deadline: 1h
+        31536000, // operating duration: 1 year
+        ethers.parseEther("10"),
+        owner.address,
+        10n,
+      );
+
+      await venue.waitForDeployment();
+
+      return { venue, owner, user1, user2 };
+    }
+
+    it("should keep state = FUNDING when investing below goal", async function () {
+      const { venue, user1 } = await loadFixture(deployAutoTransitionFixture);
+      await venue.connect(user1).invest({ value: ethers.parseEther("3") });
+
+      expect(await venue.state()).to.equal(0); // FUNDING
+      expect(await venue.totalRaised()).to.equal(ethers.parseEther("3"));
+    });
+
+    it("should transition to ACTIVE when investing exactly to the goal", async function () {
+      const { venue, user1 } = await loadFixture(deployAutoTransitionFixture);
+      await venue.connect(user1).invest({ value: ethers.parseEther("10") });
+
+      expect(await venue.state()).to.equal(1); // ACTIVE
+    });
+
+    it("should transition to ACTIVE when partial investment fills remaining capacity", async function () {
+      const { venue, user1, user2 } = await loadFixture(deployAutoTransitionFixture);
+      await venue.connect(user1).invest({ value: ethers.parseEther("7") });
+      expect(await venue.state()).to.equal(0); // still FUNDING
+
+      // user2 sends 5 ETH but only 3 ETH accepted (partial) → goal reached
+      await venue.connect(user2).invest({ value: ethers.parseEther("5") });
+
+      expect(await venue.state()).to.equal(1); // ACTIVE
+      expect(await venue.totalRaised()).to.equal(ethers.parseEther("10"));
+    });
+
+    it("should initialize endTime immediately after automatic activation", async function () {
+      const { venue, user1 } = await loadFixture(deployAutoTransitionFixture);
+      expect(await venue.endTime()).to.equal(0n); // not set before
+
+      const tx = await venue.connect(user1).invest({ value: ethers.parseEther("10") });
+      const receipt = await tx.wait();
+      const block = await ethers.provider.getBlock(receipt.blockNumber);
+
+      const operatingDuration = await venue.operatingDuration();
+      expect(await venue.endTime()).to.equal(
+        BigInt(block!.timestamp) + operatingDuration,
+      );
+    });
+
+    it("should emit StateChanged(ACTIVE) on auto-transition", async function () {
+      const { venue, user1 } = await loadFixture(deployAutoTransitionFixture);
+
+      await expect(venue.connect(user1).invest({ value: ethers.parseEther("10") }))
+        .to.emit(venue, "StateChanged")
+        .withArgs(1); // State.ACTIVE
+    });
+
+    it("should still emit Invested with the accepted amount", async function () {
+      const { venue, user1, user2 } = await loadFixture(deployAutoTransitionFixture);
+      await venue.connect(user1).invest({ value: ethers.parseEther("7") });
+
+      // user2 sends 5 ETH, only 3 accepted → Invested should show 3 ETH
+      await expect(venue.connect(user2).invest({ value: ethers.parseEther("5") }))
+        .to.emit(venue, "Invested")
+        .withArgs(user2.address, ethers.parseEther("3"));
+    });
+
+    it("should still emit PartialInvestmentAccepted when applicable", async function () {
+      const { venue, user1, user2 } = await loadFixture(deployAutoTransitionFixture);
+      await venue.connect(user1).invest({ value: ethers.parseEther("8") });
+
+      // user2 sends 5 ETH, only 2 accepted, 3 refunded → triggers partial + auto-transition
+      await expect(venue.connect(user2).invest({ value: ethers.parseEther("5") }))
+        .to.emit(venue, "PartialInvestmentAccepted")
+        .withArgs(
+          user2.address,
+          ethers.parseEther("5"), // requested
+          ethers.parseEther("2"), // accepted
+          ethers.parseEther("3"), // refunded
+        );
+    });
+
+    it("should allow finalizeFunding for backward compatibility (goal reached without auto-transition)", async function () {
+      // Use the harness to simulate a campaign that reached the goal
+      // before the auto-transition feature existed (state still FUNDING)
+      const [owner, user1] = await ethers.getSigners();
+      const Harness = await ethers.getContractFactory("VenueFiHarness");
+      const harness = await Harness.deploy(
+        "Legacy Venue",
+        3600,
+        31536000,
+        ethers.parseEther("1"),
+        owner.address,
+        10n,
+      );
+      await harness.waitForDeployment();
+
+      // Force totalRaised to equal fundingGoal without going through invest()
+      // This simulates a pre-feature campaign where goal was reached but state stayed FUNDING
+      await harness.forceTotalRaised(ethers.parseEther("1"));
+
+      expect(await harness.state()).to.equal(0); // still FUNDING
+      await harness.finalizeFunding();
+      expect(await harness.state()).to.equal(1); // ACTIVE
     });
   });
 });

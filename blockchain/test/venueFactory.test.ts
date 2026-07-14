@@ -485,7 +485,7 @@ describe("VenueFactory", function () {
       expect(await venue.balance(otherUser.address)).to.equal(ethers.parseEther("0.5"));
     });
 
-    it("should allow finalizeFunding on a factory-created venue", async function () {
+    it("should auto-transition to ACTIVE on a factory-created venue when goal is met", async function () {
       const { factory, operator, otherUser } = await loadFixture(deployFactoryFixture);
 
       await factory.connect(operator).createVenue(
@@ -500,9 +500,8 @@ describe("VenueFactory", function () {
       const VenueFi = await ethers.getContractFactory("VenueFi");
       const venue = VenueFi.attach(venueAddress);
 
-      // Invest enough to meet goal, then finalize
+      // Invest enough to meet goal → auto-transition to ACTIVE
       await venue.connect(otherUser).invest({ value: ethers.parseEther("1.5") });
-      await venue.finalizeFunding();
 
       // State.ACTIVE == 1
       expect(await venue.state()).to.equal(1);
