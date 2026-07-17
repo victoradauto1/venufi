@@ -147,10 +147,10 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
 
   // ── On-chain reads ────────────────────────────────────────────────────
   const { data: nameRaw, isLoading: nameLoading } = useVenueName(address);
-  const { data: stateRaw, isLoading: stateLoading } = useVenueState(address);
-  const { data: fundingGoal, isLoading: goalLoading } = useVenueFundingGoal(address);
-  const { data: currentRaised, isLoading: raisedLoading } = useVenueCurrentRaised(address);
-  const { data: userShares } = useVenueUserShares(address, userAddress);
+  const { data: stateRaw, isLoading: stateLoading, refetch: refetchState } = useVenueState(address);
+  const { data: fundingGoal, isLoading: goalLoading, refetch: refetchGoal } = useVenueFundingGoal(address);
+  const { data: currentRaised, isLoading: raisedLoading, refetch: refetchRaised } = useVenueCurrentRaised(address);
+  const { data: userShares, refetch: refetchShares } = useVenueUserShares(address, userAddress);
 
   const isLoading = nameLoading || stateLoading || goalLoading || raisedLoading;
 
@@ -188,7 +188,20 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
 
   useEffect(() => {
     if (isConfirmed && txHash) {
-      setTx({ status: "success", hash: txHash });
+      // Refetch all on-chain data so the receipt renders the latest state.
+      // We intentionally avoid setting success until refetches settle.
+      let cancelled = false;
+      Promise.all([
+        refetchRaised(),
+        refetchGoal(),
+        refetchState(),
+        refetchShares(),
+      ]).finally(() => {
+        if (!cancelled) {
+          setTx({ status: "success", hash: txHash });
+        }
+      });
+      return () => { cancelled = true; };
     } else if (isConfirming && txHash) {
       setTx({ status: "confirming", hash: txHash });
     } else if (isError) {
@@ -198,7 +211,7 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
         error: humanizeError(writeError),
       });
     }
-  }, [isConfirmed, isConfirming, isError, txHash, writeError]);
+  }, [isConfirmed, isConfirming, isError, txHash, writeError, refetchRaised, refetchGoal, refetchState, refetchShares]);
 
   // ── Derived values ────────────────────────────────────────────────────
   const venueState = (stateRaw ?? VenueState.FUNDING) as VenueStateValue;
