@@ -16,7 +16,6 @@ import {
 } from "@/hooks/web3/useVenue";
 import { useInvest } from "@/hooks/web3/useVenueWrite";
 import { formatEth, computeFundingPercent } from "@/lib/format";
-import { Stat } from "../../../components/Stat";
 import { TransactionButton } from "@/components/tx/TransactionButton";
 import { TransactionStatus } from "@/components/tx/TransactionStatus";
 import {
@@ -506,21 +505,60 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
 
         <div className="h-px w-full bg-border mb-7" />
 
-        <div className="grid grid-cols-3 gap-7">
-          <Stat label="Funding Goal" value={`${goalEth} ETH`} />
-          <Stat label="Total Raised" value={`${raisedEth} ETH`} />
-          <Stat label="Remaining Capacity" value={`${remainingEth} ETH`} />
-        </div>
+        {/* ─── Funding Progress ─── */}
+        <div className="flex flex-col items-center gap-4">
+          <p className="text-[13px] font-normal tracking-[0.3em] uppercase text-text-secondary font-sans">
+            Funding Progress
+          </p>
 
-        <div className="mt-7 h-px w-full bg-border overflow-hidden">
-          <div
-            className="h-full bg-accent transition-all duration-500"
-            style={{ width: `${fundingPercent}%` }}
-          />
+          <p
+            className="text-[48px] font-light font-serif tracking-tight leading-none"
+            style={{
+              color:
+                fundingPercent >= 100
+                  ? "var(--success)"
+                  : fundingPercent >= 70
+                    ? "#D4A849"
+                    : "var(--accent)",
+            }}
+          >
+            {fundingPercent}%
+          </p>
+
+          {/* Progress bar */}
+          <div className="w-full mt-1">
+            <div
+              className="funding-progress-track"
+              role="progressbar"
+              aria-valuenow={fundingPercent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              <div
+                className="funding-progress-fill"
+                style={{
+                  width: `${fundingPercent}%`,
+                  background:
+                    fundingPercent >= 100
+                      ? "linear-gradient(90deg, var(--success), #c8b07a)"
+                      : fundingPercent >= 70
+                        ? "linear-gradient(90deg, #C4943D, #E8C96A, #D4A849)"
+                        : "linear-gradient(90deg, var(--accent), #C4943D)",
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Raised / Remaining text */}
+          <p className="text-[14px] text-text-secondary font-sans font-light">
+            <span className="font-medium text-text-primary">{raisedEth} ETH</span>{" "}
+            raised of{" "}
+            <span className="font-medium text-text-primary">{goalEth} ETH</span>
+          </p>
+          <p className="text-[13px] text-text-tertiary font-sans font-light tracking-wide">
+            {remainingEth} ETH remaining
+          </p>
         </div>
-        <p className="mt-2.5 text-right text-[13px] text-text-tertiary font-sans tracking-wide">
-          {fundingPercent}% funded
-        </p>
 
         <div className="mt-7 h-px w-full bg-border" />
 
