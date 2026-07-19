@@ -3,18 +3,20 @@
 import { useState, useCallback, useEffect } from "react";
 import type { Address } from "viem";
 import { parseEther } from "viem";
-import { useAccount } from "wagmi";
+import { useAccount, useReadContract } from "wagmi";
 import {
   useVenueName,
   useVenueState,
   useVenueFundingGoal,
   useVenueCurrentRaised,
   useVenueUserShares,
+  useVenuePending,
   VenueState,
   VENUE_STATE_LABELS,
   type VenueStateValue,
 } from "@/hooks/web3/useVenue";
 import { useInvest } from "@/hooks/web3/useVenueWrite";
+import { venueFiAbi } from "@/lib/contracts/venueFi";
 import { formatEth, computeFundingPercent } from "@/lib/format";
 import { TransactionButton } from "@/components/tx/TransactionButton";
 import { TransactionStatus } from "@/components/tx/TransactionStatus";
@@ -151,6 +153,15 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
   const { data: currentRaised, isLoading: raisedLoading, refetch: refetchRaised } = useVenueCurrentRaised(address);
   const { data: userShares, refetch: refetchShares } = useVenueUserShares(address, userAddress);
 
+  // ── "Your Investment" card reads ─────────────────────────────────────
+  const { data: totalSupply } = useReadContract({
+    address,
+    abi: venueFiAbi,
+    functionName: "totalSupply",
+    query: { enabled: !!address },
+  });
+  const { data: pendingRevenue } = useVenuePending(address, userAddress);
+
   const isLoading = nameLoading || stateLoading || goalLoading || raisedLoading;
 
   const venueName = (typeof nameRaw === "string" && nameRaw.trim().length > 0)
@@ -219,6 +230,21 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
   const goalEth = fundingGoal != null ? formatEth(fundingGoal as bigint) : "—";
   const raisedEth = currentRaised != null ? formatEth(currentRaised as bigint) : "—";
   const userSharesEth = userShares != null ? formatEth(userShares as bigint) : "0";
+
+  // ── "Your Investment" derived values ───────────────────────────────────
+  const userSharesBigint = (userShares as bigint | undefined) ?? 0n;
+  const totalSupplyBigint = (totalSupply as bigint | undefined) ?? 0n;
+  const hasShares = userSharesBigint > 0n;
+
+  const ownershipPercent =
+    hasShares && totalSupplyBigint > 0n
+      ? ((userSharesBigint * 10000n) / totalSupplyBigint)
+      : 0n;
+  // Format: "12.34" — two decimal places via bigint permyriad
+  const ownershipDisplay = `${ownershipPercent / 100n}.${String(ownershipPercent % 100n).padStart(2, "0")}`;
+
+  const pendingRevenueEth =
+    pendingRevenue != null ? formatEth(pendingRevenue as bigint) : "0";
 
   const remainingFunding =
     fundingGoal != null && currentRaised != null
@@ -584,6 +610,60 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
 
       {/* ─── Investment Form + Preview ─── */}
       <div className="w-full lg:flex-1 flex flex-col gap-8">
+        {/* ─── Your Investment Card (only when wallet holds shares) ─── */}
+        {isConnected && hasShares && (
+          <div className="rounded-sm border border-accent/25 bg-surface p-9 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
+            <h3 className="text-[13px] font-normal tracking-[0.3em] uppercase text-text-secondary mb-7 font-sans">
+              Your Investment
+            </h3>
+
+            <div className="grid grid-cols-2 gap-7">
+              {/* Your Shares */}
+              <div>
+                <p className="text-[11px] text-text-tertiary mb-1.5 font-sans tracking-[0.15em] uppercase">
+                  Your Shares
+                </p>
+                <p className="text-xl font-light text-text-primary font-serif tracking-tight">
+                  {userSharesEth} ETH
+                </p>
+              </div>
+
+              {/* Ownership % */}
+              <div>
+                <p className="text-[11px] text-text-tertiary mb-1.5 font-sans tracking-[0.15em] uppercase">
+                  Ownership
+                </p>
+                <p className="text-xl font-light text-accent font-serif tracking-tight">
+                  {ownershipDisplay}%
+                </p>
+              </div>
+
+              {/* Current Funding Status */}
+              <div>
+                <p className="text-[11px] text-text-tertiary mb-1.5 font-sans tracking-[0.15em] uppercase">
+                  Funding Status
+                </p>
+                <p className="text-xl font-light text-text-primary font-serif tracking-tight">
+                  {raisedEth}
+                  <span className="text-[14px] text-text-tertiary font-sans font-light">
+                    {" "}/{" "}{goalEth} ETH
+                  </span>
+                </p>
+              </div>
+
+              {/* Pending Revenue */}
+              <div>
+                <p className="text-[11px] text-text-tertiary mb-1.5 font-sans tracking-[0.15em] uppercase">
+                  Pending Revenue
+                </p>
+                <p className="text-xl font-light text-text-primary font-serif tracking-tight">
+                  {pendingRevenueEth} ETH
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ─── Form Card ─── */}
         <div className="rounded-sm border border-border bg-surface p-9 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
           <h3 className="text-[13px] font-normal tracking-[0.3em] uppercase text-text-secondary mb-7 font-sans">
