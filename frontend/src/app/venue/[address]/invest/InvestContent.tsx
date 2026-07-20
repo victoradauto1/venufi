@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import type { Address } from "viem";
 import { parseEther } from "viem";
 import { useAccount, useReadContract } from "wagmi";
@@ -11,6 +11,7 @@ import {
   useVenueCurrentRaised,
   useVenueUserShares,
   useVenuePending,
+  useVenueDeadline,
   VenueState,
   VENUE_STATE_LABELS,
   type VenueStateValue,
@@ -117,6 +118,35 @@ function humanizeError(err: unknown): string {
 }
 
 // ---------------------------------------------------------------------------
+// Countdown helper
+// ---------------------------------------------------------------------------
+
+interface CountdownResult {
+  days: number;
+  hours: number;
+  minutes: number;
+  seconds: number;
+  expired: boolean;
+  totalSeconds: number;
+}
+
+function computeCountdown(deadlineUnix: number): CountdownResult {
+  const now = Math.floor(Date.now() / 1000);
+  const diff = deadlineUnix - now;
+  if (diff <= 0) {
+    return { days: 0, hours: 0, minutes: 0, seconds: 0, expired: true, totalSeconds: 0 };
+  }
+  return {
+    days: Math.floor(diff / 86400),
+    hours: Math.floor((diff % 86400) / 3600),
+    minutes: Math.floor((diff % 3600) / 60),
+    seconds: diff % 60,
+    expired: false,
+    totalSeconds: diff,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Investment Snapshot — captures values at submit time for the receipt
 // ---------------------------------------------------------------------------
 
@@ -152,6 +182,7 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
   const { data: fundingGoal, isLoading: goalLoading, refetch: refetchGoal } = useVenueFundingGoal(address);
   const { data: currentRaised, isLoading: raisedLoading, refetch: refetchRaised } = useVenueCurrentRaised(address);
   const { data: userShares, refetch: refetchShares } = useVenueUserShares(address, userAddress);
+  const { data: deadlineRaw } = useVenueDeadline(address);
 
   // ── "Your Investment" card reads ─────────────────────────────────────
   const { data: totalSupply } = useReadContract({
@@ -256,6 +287,36 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
     fundingGoal != null && currentRaised != null
       ? computeFundingPercent(currentRaised as bigint, fundingGoal as bigint)
       : 0;
+
+  // ── Deadline / Countdown ───────────────────────────────────────────────
+  const deadlineUnix = deadlineRaw != null ? Number(deadlineRaw) : 0;
+
+  const [countdown, setCountdown] = useState<CountdownResult>(() =>
+    deadlineUnix > 0 ? computeCountdown(deadlineUnix) : { days: 0, hours: 0, minutes: 0, seconds: 0, expired: true, totalSeconds: 0 }
+  );
+
+  useEffect(() => {
+    if (deadlineUnix <= 0) return;
+    // Immediately compute once
+    setCountdown(computeCountdown(deadlineUnix));
+    const interval = setInterval(() => {
+      const next = computeCountdown(deadlineUnix);
+      setCountdown(next);
+      if (next.expired) clearInterval(interval);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [deadlineUnix]);
+
+  // Hero status badge config
+  const heroBadge = useMemo(() => {
+    if (venueState === VenueState.ACTIVE) {
+      return { label: "Funding Successful", color: "var(--success)", bg: "rgba(183, 155, 108, 0.12)" };
+    }
+    if (venueState === VenueState.ENDED || (venueState === VenueState.FUNDING && countdown.expired)) {
+      return { label: "Funding Closed", color: "var(--text-tertiary)", bg: "rgba(112, 107, 101, 0.10)" };
+    }
+    return { label: "Funding Open", color: "#C4943D", bg: "rgba(196, 148, 61, 0.12)" };
+  }, [venueState, countdown.expired]);
 
   // ── Investment form state ─────────────────────────────────────────────
   const [ethAmount, setEthAmount] = useState("");
@@ -516,6 +577,127 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
 
   // ── Loaded state ──────────────────────────────────────────────────────
   return (
+    <div className="w-full">
+      {/* ─── Funding Status Hero ─── */}
+      <section
+        className="relative mx-auto max-w-3xl px-6 pt-4 pb-16 text-center"
+        style={{ marginBottom: "1rem" }}
+      >
+        {/* Status Badge */}
+        <div className="flex justify-center mb-8">
+          <span
+            className="inline-flex items-center gap-2 rounded-full px-5 py-2 text-[11px] font-semibold tracking-[0.2em] uppercase font-sans"
+            style={{
+              color: heroBadge.color,
+              backgroundColor: heroBadge.bg,
+              border: `1px solid ${heroBadge.color}22`,
+            }}
+          >
+            <span
+              className="h-2 w-2 rounded-full"
+              style={{ backgroundColor: heroBadge.color }}
+            />
+            {heroBadge.label}
+          </span>
+        </div>
+
+        {/* Venue Name */}
+        <h1
+          className="font-serif font-light tracking-wide leading-tight text-text-primary"
+          style={{ fontSize: "clamp(1.75rem, 4vw, 2.75rem)" }}
+        >
+          {venueName}
+        </h1>
+
+        {/* Divider accent line */}
+        <div
+          className="mx-auto mt-6 mb-10"
+          style={{
+            width: "48px",
+            height: "2px",
+            background: "linear-gradient(90deg, transparent, var(--accent), transparent)",
+          }}
+        />
+
+        {/* Funding Percentage */}
+        <p
+          className="font-serif font-light leading-none tracking-tight"
+          style={{
+            fontSize: "clamp(3.5rem, 8vw, 5rem)",
+            color:
+              fundingPercent >= 100
+                ? "var(--success)"
+                : fundingPercent >= 70
+                  ? "#D4A849"
+                  : "var(--accent)",
+          }}
+        >
+          {fundingPercent}%
+        </p>
+
+        {/* Raised of Goal */}
+        <p className="mt-4 text-[16px] text-text-secondary font-sans font-light tracking-wide">
+          <span className="font-medium text-text-primary">{raisedEth} ETH</span>{" "}
+          raised of{" "}
+          <span className="font-medium text-text-primary">{goalEth} ETH</span>
+        </p>
+
+        {/* Remaining */}
+        <p className="mt-2 text-[14px] text-text-tertiary font-sans font-light tracking-wide">
+          {remainingEth} ETH remaining
+        </p>
+
+        {/* Countdown */}
+        <div className="mt-10">
+          {venueState === VenueState.ACTIVE ? (
+            <p className="text-[13px] tracking-[0.25em] uppercase font-sans font-semibold" style={{ color: "var(--success)" }}>
+              Funding Successful
+            </p>
+          ) : countdown.expired ? (
+            <p className="text-[13px] tracking-[0.25em] uppercase font-sans font-semibold text-text-tertiary">
+              Funding Closed
+            </p>
+          ) : (
+            <>
+              <p className="text-[11px] tracking-[0.3em] uppercase text-text-tertiary font-sans mb-3">
+                Funding ends in
+              </p>
+              <div className="flex justify-center gap-6">
+                {[
+                  { value: countdown.days, label: "Days" },
+                  { value: countdown.hours, label: "Hours" },
+                  { value: countdown.minutes, label: "Min" },
+                  { value: countdown.seconds, label: "Sec" },
+                ].map(({ value, label }) => (
+                  <div key={label} className="flex flex-col items-center">
+                    <span
+                      className="font-serif font-light tracking-tight leading-none"
+                      style={{ fontSize: "1.75rem", color: "var(--text-primary)" }}
+                    >
+                      {String(value).padStart(2, "0")}
+                    </span>
+                    <span className="mt-1.5 text-[10px] tracking-[0.2em] uppercase text-text-tertiary font-sans">
+                      {label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Bottom decorative line */}
+        <div
+          className="mx-auto mt-12"
+          style={{
+            width: "100%",
+            maxWidth: "280px",
+            height: "1px",
+            background: "linear-gradient(90deg, transparent, var(--border), transparent)",
+          }}
+        />
+      </section>
+
     <section className="flex flex-col lg:flex-row items-start justify-center gap-10 lg:gap-14 px-6 pb-24 max-w-5xl mx-auto w-full">
       {/* ─── Venue Information Card ─── */}
       <div className="w-full lg:flex-1 rounded-sm border border-border bg-surface p-9 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
@@ -768,6 +950,7 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
         </div>
       </div>
     </section>
+    </div>
   );
 }
 
