@@ -27,6 +27,7 @@ import {
   type ReceiptAction,
 } from "@/components/tx/TransactionReceipt";
 import { IDLE_TX_STATE, type TransactionState } from "@/types/transaction";
+import Link from "next/link";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -310,7 +311,7 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
   // Hero status badge config
   const heroBadge = useMemo(() => {
     if (venueState === VenueState.ACTIVE) {
-      return { label: "Funding Successful", color: "var(--success)", bg: "rgba(183, 155, 108, 0.12)" };
+      return { label: "Active", color: "var(--success)", bg: "rgba(183, 155, 108, 0.12)" };
     }
     if (venueState === VenueState.ENDED || (venueState === VenueState.FUNDING && countdown.expired)) {
       return { label: "Funding Closed", color: "var(--text-tertiary)", bg: "rgba(112, 107, 101, 0.10)" };
@@ -625,14 +626,16 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
           style={{
             fontSize: "clamp(3.5rem, 8vw, 5rem)",
             color:
-              fundingPercent >= 100
+              venueState === VenueState.ACTIVE
                 ? "var(--success)"
-                : fundingPercent >= 70
-                  ? "#D4A849"
-                  : "var(--accent)",
+                : fundingPercent >= 100
+                  ? "var(--success)"
+                  : fundingPercent >= 70
+                    ? "#D4A849"
+                    : "var(--accent)",
           }}
         >
-          {fundingPercent}%
+          {venueState === VenueState.ACTIVE ? "100" : fundingPercent}%
         </p>
 
         {/* Raised of Goal */}
@@ -643,15 +646,17 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
         </p>
 
         {/* Remaining */}
-        <p className="mt-2 text-[14px] text-text-tertiary font-sans font-light tracking-wide">
-          {remainingEth} ETH remaining
-        </p>
+        {venueState !== VenueState.ACTIVE && (
+          <p className="mt-2 text-[14px] text-text-tertiary font-sans font-light tracking-wide">
+            {remainingEth} ETH remaining
+          </p>
+        )}
 
         {/* Countdown */}
         <div className="mt-10">
           {venueState === VenueState.ACTIVE ? (
             <p className="text-[13px] tracking-[0.25em] uppercase font-sans font-semibold" style={{ color: "var(--success)" }}>
-              Funding Successful
+              Funding Successfully Completed
             </p>
           ) : countdown.expired ? (
             <p className="text-[13px] tracking-[0.25em] uppercase font-sans font-semibold text-text-tertiary">
@@ -698,6 +703,19 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
         />
       </section>
 
+    {venueState === VenueState.ACTIVE ? (
+      <ActiveDashboard
+        venueName={venueName}
+        raisedEth={raisedEth}
+        goalEth={goalEth}
+        userSharesEth={userSharesEth}
+        ownershipDisplay={ownershipDisplay}
+        pendingRevenueEth={pendingRevenueEth}
+        hasShares={hasShares}
+        isConnected={isConnected}
+        venueAddress={venueAddress}
+      />
+    ) : (
     <section className="flex flex-col lg:flex-row items-start justify-center gap-10 lg:gap-14 px-6 pb-24 max-w-5xl mx-auto w-full">
       {/* ─── Venue Information Card ─── */}
       <div className="w-full lg:flex-1 rounded-sm border border-border bg-surface p-9 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
@@ -950,6 +968,7 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
         </div>
       </div>
     </section>
+    )}
     </div>
   );
 }
@@ -975,5 +994,191 @@ function InvestIcon() {
       <polyline points="17 18 12 23 7 18" />
       <path d="M21 12H3" />
     </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Active Dashboard — rendered when venueState === ACTIVE
+// ---------------------------------------------------------------------------
+
+interface ActiveDashboardProps {
+  venueName: string;
+  raisedEth: string;
+  goalEth: string;
+  userSharesEth: string;
+  ownershipDisplay: string;
+  pendingRevenueEth: string;
+  hasShares: boolean;
+  isConnected: boolean;
+  venueAddress: string;
+}
+
+function ActiveDashboard({
+  raisedEth,
+  goalEth,
+  userSharesEth,
+  ownershipDisplay,
+  pendingRevenueEth,
+  hasShares,
+  isConnected,
+  venueAddress,
+}: ActiveDashboardProps) {
+  const hasPending = pendingRevenueEth !== "0" && pendingRevenueEth !== "0.0";
+
+  return (
+    <section className="px-6 pb-24 max-w-5xl mx-auto w-full">
+      {/* ─── Three-card grid ─── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        {/* Card 1 — Campaign Summary */}
+        <div className="rounded-sm border border-border bg-surface p-8 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
+          <h3 className="text-[13px] font-normal tracking-[0.3em] uppercase text-text-secondary mb-7 font-sans">
+            Campaign Summary
+          </h3>
+          <div className="space-y-6">
+            <div>
+              <p className="text-[11px] text-text-tertiary mb-1.5 font-sans tracking-[0.15em] uppercase">
+                Capital Raised
+              </p>
+              <p className="text-xl font-light text-text-primary font-serif tracking-tight">
+                {raisedEth} ETH
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] text-text-tertiary mb-1.5 font-sans tracking-[0.15em] uppercase">
+                Funding Goal
+              </p>
+              <p className="text-xl font-light text-text-primary font-serif tracking-tight">
+                {goalEth} ETH
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] text-text-tertiary mb-1.5 font-sans tracking-[0.15em] uppercase">
+                Funding Status
+              </p>
+              <p className="text-xl font-light font-serif tracking-tight" style={{ color: "var(--success)" }}>
+                Completed
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 2 — Your Position */}
+        <div className="rounded-sm border border-accent/25 bg-surface p-8 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
+          <h3 className="text-[13px] font-normal tracking-[0.3em] uppercase text-text-secondary mb-7 font-sans">
+            Your Position
+          </h3>
+          {isConnected && hasShares ? (
+            <div className="space-y-6">
+              <div>
+                <p className="text-[11px] text-text-tertiary mb-1.5 font-sans tracking-[0.15em] uppercase">
+                  Your Shares
+                </p>
+                <p className="text-xl font-light text-text-primary font-serif tracking-tight">
+                  {userSharesEth} ETH
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] text-text-tertiary mb-1.5 font-sans tracking-[0.15em] uppercase">
+                  Ownership
+                </p>
+                <p className="text-xl font-light text-accent font-serif tracking-tight">
+                  {ownershipDisplay}%
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] text-text-tertiary mb-1.5 font-sans tracking-[0.15em] uppercase">
+                  Pending Revenue
+                </p>
+                <p className="text-xl font-light text-text-primary font-serif tracking-tight">
+                  {pendingRevenueEth} ETH
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] text-text-tertiary mb-1.5 font-sans tracking-[0.15em] uppercase">
+                  Claim Status
+                </p>
+                {hasPending ? (
+                  <p className="text-[15px] font-medium font-sans" style={{ color: "var(--success)" }}>
+                    Available
+                  </p>
+                ) : (
+                  <p className="text-[15px] font-light text-text-tertiary font-sans">
+                    No revenue yet
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-[14px] text-text-tertiary font-sans font-light leading-relaxed">
+              {isConnected ? "You have no shares in this venue." : "Connect your wallet to view your position."}
+            </p>
+          )}
+        </div>
+
+        {/* Card 3 — Revenue Distribution */}
+        <div className="rounded-sm border border-border bg-surface p-8 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
+          <h3 className="text-[13px] font-normal tracking-[0.3em] uppercase text-text-secondary mb-7 font-sans">
+            Revenue Distribution
+          </h3>
+          <div className="space-y-6">
+            <div>
+              <p className="text-[11px] text-text-tertiary mb-1.5 font-sans tracking-[0.15em] uppercase">
+                Revenue Model
+              </p>
+              <p className="text-[15px] text-text-secondary font-sans font-light leading-relaxed">
+                Pro-rata by shares
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] text-text-tertiary mb-1.5 font-sans tracking-[0.15em] uppercase">
+                Operator Fee
+              </p>
+              <p className="text-[15px] text-text-secondary font-sans font-light leading-relaxed">
+                Protocol configured
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] text-text-tertiary mb-1.5 font-sans tracking-[0.15em] uppercase">
+                Claim
+              </p>
+              <p className="text-[15px] text-text-secondary font-sans font-light leading-relaxed">
+                Available after revenue deposits
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── Info Panel ─── */}
+      <div className="rounded-sm border border-border bg-surface-raised/50 p-9 mb-8">
+        <h3 className="text-[13px] font-normal tracking-[0.3em] uppercase text-text-secondary mb-5 font-sans">
+          Investment Phase Complete
+        </h3>
+        <div className="space-y-3">
+          <p className="text-[14px] text-text-secondary font-sans font-light leading-relaxed">
+            Funding has successfully finished. The operator may now withdraw the capital and begin operating the venue.
+          </p>
+          <p className="text-[14px] text-text-secondary font-sans font-light leading-relaxed">
+            Revenue distributions will become available after deposits are made by the operator.
+          </p>
+        </div>
+      </div>
+
+      {/* ─── CTA Buttons ─── */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <Link
+          href={`/venue/${venueAddress}/revenue`}
+          className="btn-gold flex items-center justify-center gap-2.5 flex-1 rounded-sm px-6 py-3.5 text-[14px] font-semibold tracking-wide font-sans no-underline"
+        >
+          View Revenue
+        </Link>
+        <Link
+          href="/venues"
+          className="flex-1 flex items-center justify-center gap-2 rounded-sm border border-border bg-background px-5 py-3 text-[13px] font-medium text-text-secondary font-sans tracking-wide hover:border-accent/50 hover:text-text-primary transition-colors duration-200 no-underline"
+        >
+          Browse Venues
+        </Link>
+      </div>
+    </section>
   );
 }
