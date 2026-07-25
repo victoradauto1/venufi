@@ -2,8 +2,9 @@
 
 import { useState, useCallback, useEffect, useMemo } from "react";
 import type { Address } from "viem";
-import { parseEther } from "viem";
+import { parseEther, parseAbiItem, formatEther } from "viem";
 import { useAccount, useReadContract } from "wagmi";
+import { publicClient } from "@/lib/wagmi";
 import {
   useVenueName,
   useVenueState,
@@ -34,6 +35,19 @@ import Link from "next/link";
 // ---------------------------------------------------------------------------
 
 const EXPLORER_URL = "https://sepolia.etherscan.io";
+
+/**
+ * Formats a bigint wei value to a trimmed ETH string.
+ * Inline helper to avoid coupling to shared formatEth for analytics-only usage.
+ */
+function formatEthSafe(wei: bigint): string {
+  const raw = formatEther(wei);
+  if (raw.includes(".")) {
+    const trimmed = raw.replace(/\.?0+$/, "");
+    return trimmed || "0";
+  }
+  return raw;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -576,6 +590,94 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
     );
   }
 
+  // ── Campaign Analytics (on-chain event logs) ─────────────────────────
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+  const [investedLogs, setInvestedLogs] = useState<{ investor: string; amount: bigint }[]>([]);
+  const [depositedLogs, setDepositedLogs] = useState<{ amount: bigint }[]>([]);
+  const [claimedLogs, setClaimedLogs] = useState<{ amount: bigint }[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchLogs() {
+      try {
+        const [invested, deposited, claimed] = await Promise.all([
+          publicClient.getLogs({
+            address: address,
+            event: parseAbiItem("event Invested(address indexed investor, uint256 amount)"),
+            fromBlock: 0n,
+            toBlock: "latest",
+          }),
+          publicClient.getLogs({
+            address: address,
+            event: parseAbiItem("event Deposited(address indexed depositor, uint256 amount)"),
+            fromBlock: 0n,
+            toBlock: "latest",
+          }),
+          publicClient.getLogs({
+            address: address,
+            event: parseAbiItem("event Claimed(address indexed user, uint256 amount)"),
+            fromBlock: 0n,
+            toBlock: "latest",
+          }),
+        ]);
+
+        if (cancelled) return;
+
+        setInvestedLogs(
+          invested.map((log) => ({
+            investor: (log.args as { investor: string }).investor,
+            amount: (log.args as { amount: bigint }).amount,
+          }))
+        );
+        setDepositedLogs(
+          deposited.map((log) => ({
+            amount: (log.args as { amount: bigint }).amount,
+          }))
+        );
+        setClaimedLogs(
+          claimed.map((log) => ({
+            amount: (log.args as { amount: bigint }).amount,
+          }))
+        );
+      } catch {
+        // Silently handle — analytics are non-critical
+      } finally {
+        if (!cancelled) setAnalyticsLoading(false);
+      }
+    }
+
+    fetchLogs();
+    return () => { cancelled = true; };
+  }, [address]);
+
+  const analytics = useMemo(() => {
+    const uniqueInvestors = new Set(investedLogs.map((l) => l.investor.toLowerCase()));
+    const totalInvestors = uniqueInvestors.size;
+
+    const totalInvestedWei = investedLogs.reduce((sum, l) => sum + l.amount, 0n);
+    const largestInvestmentWei = investedLogs.reduce(
+      (max, l) => (l.amount > max ? l.amount : max),
+      0n
+    );
+    const averageInvestmentWei =
+      totalInvestors > 0 ? totalInvestedWei / BigInt(totalInvestors) : 0n;
+
+    const revenueDistributedWei = depositedLogs.reduce((sum, l) => sum + l.amount, 0n);
+    const revenueClaimedWei = claimedLogs.reduce((sum, l) => sum + l.amount, 0n);
+    const totalClaims = claimedLogs.length;
+
+    return {
+      totalInvestors,
+      largestInvestment: formatEthSafe(largestInvestmentWei),
+      averageInvestment: formatEthSafe(averageInvestmentWei),
+      revenueDistributed: formatEthSafe(revenueDistributedWei),
+      revenueClaimed: formatEthSafe(revenueClaimedWei),
+      totalClaims,
+      hasActivity: investedLogs.length > 0 || depositedLogs.length > 0 || claimedLogs.length > 0,
+    };
+  }, [investedLogs, depositedLogs, claimedLogs]);
+
   // ── Loaded state ──────────────────────────────────────────────────────
   return (
     <div className="w-full">
@@ -702,6 +804,17 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
           }}
         />
       </section>
+
+      {/* ─── Campaign Analytics ─── */}
+      {(venueState === VenueState.FUNDING || venueState === VenueState.ACTIVE) && (
+        <CampaignAnalytics
+          loading={analyticsLoading}
+          analytics={analytics}
+          fundingPercent={fundingPercent}
+          raisedEth={raisedEth}
+          venueState={venueState}
+        />
+      )}
 
     {venueState === VenueState.ACTIVE ? (
       <ActiveDashboard
@@ -994,6 +1107,154 @@ function InvestIcon() {
       <polyline points="17 18 12 23 7 18" />
       <path d="M21 12H3" />
     </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Campaign Analytics
+// ---------------------------------------------------------------------------
+
+interface AnalyticsData {
+  totalInvestors: number;
+  largestInvestment: string;
+  averageInvestment: string;
+  revenueDistributed: string;
+  revenueClaimed: string;
+  totalClaims: number;
+  hasActivity: boolean;
+}
+
+interface CampaignAnalyticsProps {
+  loading: boolean;
+  analytics: AnalyticsData;
+  fundingPercent: number;
+  raisedEth: string;
+  venueState: VenueStateValue;
+}
+
+function CampaignAnalytics({
+  loading,
+  analytics,
+  fundingPercent,
+  raisedEth,
+  venueState,
+}: CampaignAnalyticsProps) {
+  const cards = useMemo(() => {
+    const isActive = venueState === VenueState.ACTIVE;
+    return [
+      {
+        label: "Funding Progress",
+        value: `${isActive ? 100 : fundingPercent}%`,
+        accent: true,
+      },
+      {
+        label: "Total Raised",
+        value: `${raisedEth} ETH`,
+      },
+      {
+        label: "Total Investors",
+        value: String(analytics.totalInvestors),
+      },
+      {
+        label: "Largest Investment",
+        value: `${analytics.largestInvestment} ETH`,
+      },
+      {
+        label: "Average Investment",
+        value: `${analytics.averageInvestment} ETH`,
+      },
+      {
+        label: "Revenue Distributed",
+        value: `${analytics.revenueDistributed} ETH`,
+      },
+      {
+        label: "Revenue Claimed",
+        value: `${analytics.revenueClaimed} ETH`,
+      },
+      {
+        label: "Total Claims",
+        value: String(analytics.totalClaims),
+      },
+    ];
+  }, [analytics, fundingPercent, raisedEth, venueState]);
+
+  return (
+    <section className="px-6 pb-10 max-w-5xl mx-auto w-full">
+      <h2 className="text-[13px] font-normal tracking-[0.3em] uppercase text-text-secondary mb-7 font-sans text-center">
+        Campaign Analytics
+      </h2>
+
+      {loading ? (
+        /* Skeleton grid */
+        <div
+          className="grid gap-5"
+          style={{
+            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+          }}
+        >
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div
+              key={i}
+              className="rounded-sm border border-border bg-surface p-7 shadow-[0_2px_12px_rgba(0,0,0,0.04)] animate-pulse"
+            >
+              <div className="h-3 w-24 rounded bg-border/50 mb-4" />
+              <div className="h-6 w-16 rounded bg-border/50" />
+            </div>
+          ))}
+        </div>
+      ) : !analytics.hasActivity ? (
+        /* Empty state */
+        <div className="rounded-sm border border-border bg-surface-raised/50 p-9 text-center">
+          <p className="text-[14px] text-text-tertiary font-sans font-light">
+            No campaign activity yet.
+          </p>
+        </div>
+      ) : (
+        /* Analytics cards */
+        <div
+          className="grid gap-5"
+          style={{
+            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+          }}
+        >
+          {cards.map((card) => (
+            <div
+              key={card.label}
+              className="rounded-sm border border-border bg-surface p-7 shadow-[0_2px_12px_rgba(0,0,0,0.04)]"
+            >
+              <p className="text-[11px] text-text-tertiary mb-2.5 font-sans tracking-[0.15em] uppercase">
+                {card.label}
+              </p>
+              <p
+                className="text-xl font-light font-serif tracking-tight"
+                style={{
+                  color: card.accent
+                    ? fundingPercent >= 100
+                      ? "var(--success)"
+                      : fundingPercent >= 70
+                        ? "#D4A849"
+                        : "var(--accent)"
+                    : "var(--text-primary)",
+                }}
+              >
+                {card.value}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Section bottom divider */}
+      <div
+        className="mx-auto mt-10"
+        style={{
+          width: "100%",
+          maxWidth: "280px",
+          height: "1px",
+          background: "linear-gradient(90deg, transparent, var(--border), transparent)",
+        }}
+      />
+    </section>
   );
 }
 
