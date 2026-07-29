@@ -596,12 +596,21 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
   const [depositedLogs, setDepositedLogs] = useState<{ amount: bigint }[]>([]);
   const [claimedLogs, setClaimedLogs] = useState<{ amount: bigint }[]>([]);
 
+  // ── Timeline raw logs (keep block metadata for the activity feed) ────
+  type TimelineRawLog = {
+    eventName: string;
+    blockNumber: bigint;
+    transactionHash: string;
+    args: Record<string, unknown>;
+  };
+  const [timelineLogs, setTimelineLogs] = useState<TimelineRawLog[]>([]);
+
   useEffect(() => {
     let cancelled = false;
 
     async function fetchLogs() {
       try {
-        const [invested, deposited, claimed] = await Promise.all([
+        const [invested, deposited, claimed, partialAccepted, stateChanged] = await Promise.all([
           publicClient.getLogs({
             address: address,
             event: parseAbiItem("event Invested(address indexed investor, uint256 amount)"),
@@ -617,6 +626,18 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
           publicClient.getLogs({
             address: address,
             event: parseAbiItem("event Claimed(address indexed user, uint256 amount)"),
+            fromBlock: 0n,
+            toBlock: "latest",
+          }),
+          publicClient.getLogs({
+            address: address,
+            event: parseAbiItem("event PartialInvestmentAccepted(address indexed investor, uint256 requested, uint256 accepted, uint256 refunded)"),
+            fromBlock: 0n,
+            toBlock: "latest",
+          }),
+          publicClient.getLogs({
+            address: address,
+            event: parseAbiItem("event StateChanged(uint8 newState)"),
             fromBlock: 0n,
             toBlock: "latest",
           }),
@@ -640,6 +661,41 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
             amount: (log.args as { amount: bigint }).amount,
           }))
         );
+
+        // Build unified timeline array
+        const rawTimeline: TimelineRawLog[] = [
+          ...invested.map((log) => ({
+            eventName: "Invested" as const,
+            blockNumber: log.blockNumber,
+            transactionHash: log.transactionHash,
+            args: log.args as Record<string, unknown>,
+          })),
+          ...deposited.map((log) => ({
+            eventName: "Deposited" as const,
+            blockNumber: log.blockNumber,
+            transactionHash: log.transactionHash,
+            args: log.args as Record<string, unknown>,
+          })),
+          ...claimed.map((log) => ({
+            eventName: "Claimed" as const,
+            blockNumber: log.blockNumber,
+            transactionHash: log.transactionHash,
+            args: log.args as Record<string, unknown>,
+          })),
+          ...partialAccepted.map((log) => ({
+            eventName: "PartialInvestmentAccepted" as const,
+            blockNumber: log.blockNumber,
+            transactionHash: log.transactionHash,
+            args: log.args as Record<string, unknown>,
+          })),
+          ...stateChanged.map((log) => ({
+            eventName: "StateChanged" as const,
+            blockNumber: log.blockNumber,
+            transactionHash: log.transactionHash,
+            args: log.args as Record<string, unknown>,
+          })),
+        ];
+        setTimelineLogs(rawTimeline);
       } catch {
         // Silently handle — analytics are non-critical
       } finally {
@@ -813,6 +869,14 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
           fundingPercent={fundingPercent}
           raisedEth={raisedEth}
           venueState={venueState}
+        />
+      )}
+
+      {/* ─── Campaign Activity Timeline ─── */}
+      {(venueState === VenueState.FUNDING || venueState === VenueState.ACTIVE) && (
+        <CampaignActivityTimeline
+          loading={analyticsLoading}
+          logs={timelineLogs}
         />
       )}
 
@@ -1242,6 +1306,303 @@ function CampaignAnalytics({
             </div>
           ))}
         </div>
+      )}
+
+      {/* Section bottom divider */}
+      <div
+        className="mx-auto mt-10"
+        style={{
+          width: "100%",
+          maxWidth: "280px",
+          height: "1px",
+          background: "linear-gradient(90deg, transparent, var(--border), transparent)",
+        }}
+      />
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Campaign Activity Timeline
+// ---------------------------------------------------------------------------
+
+/** Shortened address: 0x1234...89ab */
+function shortenAddress(addr: string): string {
+  if (addr.length < 10) return addr;
+  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+}
+
+/** Shortened tx hash: 0xabcd…ef01 */
+function shortenTxHash(hash: string): string {
+  if (hash.length < 14) return hash;
+  return `${hash.slice(0, 6)}…${hash.slice(-4)}`;
+}
+
+/** Maps VenueFi enum index to human-readable label */
+function stateIndexToLabel(index: number): string {
+  switch (index) {
+    case 0: return "FUNDING";
+    case 1: return "ACTIVE";
+    case 2: return "ENDED";
+    default: return "UNKNOWN";
+  }
+}
+
+/** Derives a descriptive title for a StateChanged event. */
+function stateChangeTitle(newStateIndex: number): string {
+  switch (newStateIndex) {
+    case 1: return "Funding Goal Reached";
+    case 2: return "Campaign Ended";
+    default: return "State Changed";
+  }
+}
+
+/** Derives a descriptive subtitle for a StateChanged event. */
+function stateChangeSubtitle(newStateIndex: number): string {
+  switch (newStateIndex) {
+    case 1: return "Campaign automatically entered the ACTIVE phase.";
+    case 2: return "The campaign has transitioned to the ENDED phase.";
+    default: return `Campaign state changed to ${stateIndexToLabel(newStateIndex)}.`;
+  }
+}
+
+interface TimelineEntry {
+  icon: string;
+  title: string;
+  subtitle: string;
+  amount?: string;
+  blockNumber: bigint;
+  transactionHash: string;
+}
+
+interface CampaignActivityTimelineProps {
+  loading: boolean;
+  logs: {
+    eventName: string;
+    blockNumber: bigint;
+    transactionHash: string;
+    args: Record<string, unknown>;
+  }[];
+}
+
+function CampaignActivityTimeline({ loading, logs }: CampaignActivityTimelineProps) {
+  const entries = useMemo<TimelineEntry[]>(() => {
+    const mapped: TimelineEntry[] = logs.map((log) => {
+      switch (log.eventName) {
+        case "Invested": {
+          const investor = String(log.args.investor ?? "");
+          const amount = log.args.amount as bigint | undefined;
+          return {
+            icon: "💰",
+            title: "Investment Received",
+            subtitle: `${shortenAddress(investor)} invested in this venue.`,
+            amount: amount != null ? `${formatEthSafe(amount)} ETH` : undefined,
+            blockNumber: log.blockNumber,
+            transactionHash: log.transactionHash,
+          };
+        }
+        case "PartialInvestmentAccepted": {
+          const investor = String(log.args.investor ?? "");
+          return {
+            icon: "↩️",
+            title: "Partial Investment Accepted",
+            subtitle: `Excess funds were automatically refunded to ${shortenAddress(investor)}.`,
+            blockNumber: log.blockNumber,
+            transactionHash: log.transactionHash,
+          };
+        }
+        case "StateChanged": {
+          const newState = Number(log.args.newState ?? 0);
+          return {
+            icon: "🔄",
+            title: stateChangeTitle(newState),
+            subtitle: stateChangeSubtitle(newState),
+            blockNumber: log.blockNumber,
+            transactionHash: log.transactionHash,
+          };
+        }
+        case "Deposited": {
+          const amount = log.args.amount as bigint | undefined;
+          return {
+            icon: "📥",
+            title: "Revenue Deposited",
+            subtitle: "Operator distributed new revenue.",
+            amount: amount != null ? `${formatEthSafe(amount)} ETH` : undefined,
+            blockNumber: log.blockNumber,
+            transactionHash: log.transactionHash,
+          };
+        }
+        case "Claimed": {
+          const amount = log.args.amount as bigint | undefined;
+          return {
+            icon: "🎯",
+            title: "Revenue Claimed",
+            subtitle: "Investor claimed rewards.",
+            amount: amount != null ? `${formatEthSafe(amount)} ETH` : undefined,
+            blockNumber: log.blockNumber,
+            transactionHash: log.transactionHash,
+          };
+        }
+        default:
+          return {
+            icon: "📋",
+            title: log.eventName,
+            subtitle: "On-chain event.",
+            blockNumber: log.blockNumber,
+            transactionHash: log.transactionHash,
+          };
+      }
+    });
+
+    // Sort by blockNumber descending (newest first)
+    mapped.sort((a, b) => {
+      if (b.blockNumber > a.blockNumber) return 1;
+      if (b.blockNumber < a.blockNumber) return -1;
+      return 0;
+    });
+
+    return mapped;
+  }, [logs]);
+
+  return (
+    <section className="px-6 pb-10 max-w-3xl mx-auto w-full" aria-label="Campaign Activity Timeline">
+      <h2 className="text-[13px] font-normal tracking-[0.3em] uppercase text-text-secondary mb-7 font-sans text-center">
+        Campaign Activity
+      </h2>
+
+      {loading ? (
+        /* Skeleton timeline */
+        <ol className="relative" style={{ listStyle: "none", padding: 0, margin: 0 }}>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <li key={i} className="relative" style={{ paddingLeft: "36px", paddingBottom: i < 4 ? "28px" : "0" }}>
+              {/* Dot skeleton */}
+              <span
+                className="absolute animate-pulse"
+                style={{
+                  left: "0",
+                  top: "6px",
+                  width: "12px",
+                  height: "12px",
+                  borderRadius: "50%",
+                  background: "var(--border)",
+                }}
+              />
+              {/* Connector line skeleton */}
+              {i < 4 && (
+                <span
+                  className="absolute"
+                  style={{
+                    left: "5px",
+                    top: "22px",
+                    width: "2px",
+                    bottom: "0",
+                    background: "var(--border)",
+                    opacity: 0.4,
+                  }}
+                />
+              )}
+              {/* Card skeleton */}
+              <div className="rounded-sm border border-border bg-surface p-6 shadow-[0_2px_12px_rgba(0,0,0,0.04)] animate-pulse">
+                <div className="h-3 w-32 rounded bg-border/50 mb-3" />
+                <div className="h-3 w-48 rounded bg-border/50 mb-3" />
+                <div className="h-3 w-20 rounded bg-border/50" />
+              </div>
+            </li>
+          ))}
+        </ol>
+      ) : entries.length === 0 ? (
+        /* Empty state */
+        <div className="rounded-sm border border-border bg-surface-raised/50 p-9 text-center">
+          <p className="text-[14px] text-text-tertiary font-sans font-light">
+            No campaign activity yet.
+          </p>
+        </div>
+      ) : (
+        /* Timeline list */
+        <ol
+          className="relative"
+          style={{ listStyle: "none", padding: 0, margin: 0 }}
+          aria-label="Campaign activity events, newest first"
+        >
+          {entries.map((entry, i) => (
+            <li
+              key={`${entry.transactionHash}-${i}`}
+              className="relative"
+              style={{ paddingLeft: "36px", paddingBottom: i < entries.length - 1 ? "28px" : "0" }}
+            >
+              {/* Timeline dot */}
+              <span
+                className="absolute flex items-center justify-center"
+                aria-hidden="true"
+                style={{
+                  left: "0",
+                  top: "6px",
+                  width: "12px",
+                  height: "12px",
+                  borderRadius: "50%",
+                  background: "linear-gradient(135deg, var(--accent), #C4943D)",
+                  boxShadow: "0 0 0 3px var(--background), 0 0 0 4px var(--border)",
+                }}
+              />
+              {/* Connector line */}
+              {i < entries.length - 1 && (
+                <span
+                  className="absolute"
+                  aria-hidden="true"
+                  style={{
+                    left: "5px",
+                    top: "22px",
+                    width: "2px",
+                    bottom: "0",
+                    background: "linear-gradient(180deg, var(--border), transparent)",
+                  }}
+                />
+              )}
+              {/* Event card */}
+              <div className="rounded-sm border border-border bg-surface p-6 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
+                {/* Header row: icon + title */}
+                <div className="flex items-center gap-2.5 mb-2">
+                  <span style={{ fontSize: "16px", lineHeight: 1 }} aria-hidden="true">
+                    {entry.icon}
+                  </span>
+                  <h3 className="text-[14px] font-medium text-text-primary font-sans tracking-wide">
+                    {entry.title}
+                  </h3>
+                </div>
+
+                {/* Subtitle */}
+                <p className="text-[13px] text-text-secondary font-sans font-light leading-relaxed mb-3">
+                  {entry.subtitle}
+                </p>
+
+                {/* Amount (when applicable) */}
+                {entry.amount && (
+                  <p className="text-xl font-light text-accent font-serif tracking-tight mb-3">
+                    {entry.amount}
+                  </p>
+                )}
+
+                {/* Metadata row */}
+                <div className="flex items-center gap-4 flex-wrap">
+                  <span className="text-[11px] text-text-tertiary font-sans tracking-[0.1em] uppercase">
+                    Block {entry.blockNumber.toString()}
+                  </span>
+                  <a
+                    href={`${EXPLORER_URL}/tx/${entry.transactionHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] text-accent font-sans tracking-[0.05em] no-underline"
+                    style={{ borderBottom: "1px solid transparent" }}
+                    onMouseEnter={(e) => { (e.target as HTMLElement).style.borderBottomColor = "var(--accent)"; }}
+                    onMouseLeave={(e) => { (e.target as HTMLElement).style.borderBottomColor = "transparent"; }}
+                  >
+                    TX {shortenTxHash(entry.transactionHash)}
+                  </a>
+                </div>
+              </div>
+            </li>
+          ))}
+        </ol>
       )}
 
       {/* Section bottom divider */}
