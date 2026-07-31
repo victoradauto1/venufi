@@ -594,7 +594,7 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const [investedLogs, setInvestedLogs] = useState<{ investor: string; amount: bigint }[]>([]);
   const [depositedLogs, setDepositedLogs] = useState<{ amount: bigint }[]>([]);
-  const [claimedLogs, setClaimedLogs] = useState<{ amount: bigint }[]>([]);
+  const [claimedLogs, setClaimedLogs] = useState<{ user: string; amount: bigint }[]>([]);
 
   // ── Timeline raw logs (keep block metadata for the activity feed) ────
   type TimelineRawLog = {
@@ -658,6 +658,7 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
         );
         setClaimedLogs(
           claimed.map((log) => ({
+            user: (log.args as { user: string }).user,
             amount: (log.args as { amount: bigint }).amount,
           }))
         );
@@ -733,6 +734,42 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
       hasActivity: investedLogs.length > 0 || depositedLogs.length > 0 || claimedLogs.length > 0,
     };
   }, [investedLogs, depositedLogs, claimedLogs]);
+
+  // ── Portfolio Performance derived metrics ──────────────────────────────
+  const portfolio = useMemo(() => {
+    // Total revenue claimed specifically by the connected wallet
+    const claimedByWalletWei = userAddress
+      ? claimedLogs
+          .filter((l) => l.user.toLowerCase() === userAddress.toLowerCase())
+          .reduce((sum, l) => sum + l.amount, 0n)
+      : 0n;
+
+    // Total revenue distributed across all depositors
+    const distributedWei = depositedLogs.reduce((sum, l) => sum + l.amount, 0n);
+
+    const pendingWei = (pendingRevenue as bigint | undefined) ?? 0n;
+    const totalEarningsWei = pendingWei + claimedByWalletWei;
+
+    // Ownership as a float for tier classification
+    const ownershipFloat =
+      totalSupplyBigint > 0n
+        ? Number((userSharesBigint * 10000n) / totalSupplyBigint) / 100
+        : 0;
+
+    const investorTier: string =
+      ownershipFloat > 5
+        ? "Founding Investor"
+        : ownershipFloat > 2
+          ? "Strategic Investor"
+          : "Investor";
+
+    return {
+      claimedRevenue: formatEthSafe(claimedByWalletWei),
+      totalDistributed: formatEthSafe(distributedWei),
+      totalEarnings: formatEthSafe(totalEarningsWei),
+      investorTier,
+    };
+  }, [claimedLogs, depositedLogs, pendingRevenue, userAddress, userSharesBigint, totalSupplyBigint]);
 
   // ── Loaded state ──────────────────────────────────────────────────────
   return (
@@ -869,6 +906,21 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
           fundingPercent={fundingPercent}
           raisedEth={raisedEth}
           venueState={venueState}
+        />
+      )}
+
+      {/* ─── Portfolio Performance ─── */}
+      {(venueState === VenueState.FUNDING || venueState === VenueState.ACTIVE) && (
+        <PortfolioPerformance
+          loading={analyticsLoading}
+          isConnected={isConnected}
+          hasShares={hasShares}
+          ownershipDisplay={ownershipDisplay}
+          userSharesEth={userSharesEth}
+          pendingRevenueEth={pendingRevenueEth}
+          claimedRevenue={portfolio.claimedRevenue}
+          totalEarnings={portfolio.totalEarnings}
+          investorTier={portfolio.investorTier}
         />
       )}
 
@@ -1801,6 +1853,174 @@ function ActiveDashboard({
           Browse Venues
         </Link>
       </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Portfolio Performance
+// ---------------------------------------------------------------------------
+
+interface PortfolioPerformanceProps {
+  loading: boolean;
+  isConnected: boolean;
+  hasShares: boolean;
+  ownershipDisplay: string;
+  userSharesEth: string;
+  pendingRevenueEth: string;
+  claimedRevenue: string;
+  totalEarnings: string;
+  investorTier: string;
+}
+
+function PortfolioPerformance({
+  loading,
+  isConnected,
+  hasShares,
+  ownershipDisplay,
+  userSharesEth,
+  pendingRevenueEth,
+  claimedRevenue,
+  totalEarnings,
+  investorTier,
+}: PortfolioPerformanceProps) {
+  const cards = useMemo(
+    () => [
+      {
+        label: "Current Ownership",
+        value: `${ownershipDisplay}%`,
+        accent: true,
+      },
+      {
+        label: "Current Shares",
+        value: `${userSharesEth} ETH`,
+      },
+      {
+        label: "Pending Revenue",
+        value: `${pendingRevenueEth} ETH`,
+      },
+      {
+        label: "Claimed Revenue",
+        value: `${claimedRevenue} ETH`,
+      },
+      {
+        label: "Total Earnings",
+        value: `${totalEarnings} ETH`,
+      },
+      {
+        label: "Investor Status",
+        value: investorTier,
+      },
+    ],
+    [ownershipDisplay, userSharesEth, pendingRevenueEth, claimedRevenue, totalEarnings, investorTier],
+  );
+
+  return (
+    <section
+      className="px-6 pb-10 max-w-5xl mx-auto w-full"
+      aria-label="Portfolio Performance"
+    >
+      <h2 className="text-[13px] font-normal tracking-[0.3em] uppercase text-text-secondary mb-7 font-sans text-center">
+        Portfolio Performance
+      </h2>
+
+      {loading ? (
+        /* Skeleton grid */
+        <div
+          className="grid gap-5"
+          style={{
+            gridTemplateColumns: "repeat(3, 1fr)",
+          }}
+        >
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div
+              key={i}
+              className="rounded-sm border border-border bg-surface p-7 shadow-[0_2px_12px_rgba(0,0,0,0.04)] animate-pulse"
+            >
+              <div className="h-3 w-24 rounded bg-border/50 mb-4" />
+              <div className="h-6 w-16 rounded bg-border/50" />
+            </div>
+          ))}
+          <style>{`
+            @media (max-width: 1023px) {
+              section[aria-label="Portfolio Performance"] .grid {
+                grid-template-columns: repeat(2, 1fr) !important;
+              }
+            }
+            @media (max-width: 639px) {
+              section[aria-label="Portfolio Performance"] .grid {
+                grid-template-columns: 1fr !important;
+              }
+            }
+          `}</style>
+        </div>
+      ) : !isConnected ? (
+        /* Wallet not connected */
+        <div className="rounded-sm border border-border bg-surface-raised/50 p-9 text-center">
+          <p className="text-[14px] text-text-tertiary font-sans font-light">
+            Connect your wallet to view your portfolio.
+          </p>
+        </div>
+      ) : !hasShares ? (
+        /* Connected but no shares */
+        <div className="rounded-sm border border-border bg-surface-raised/50 p-9 text-center">
+          <p className="text-[14px] text-text-tertiary font-sans font-light">
+            You are not yet an investor in this venue.
+          </p>
+        </div>
+      ) : (
+        /* Portfolio cards */
+        <>
+          <div
+            className="grid gap-5"
+            style={{
+              gridTemplateColumns: "repeat(3, 1fr)",
+            }}
+          >
+            {cards.map((card) => (
+              <div
+                key={card.label}
+                className="rounded-sm border border-border bg-surface p-7 shadow-[0_2px_12px_rgba(0,0,0,0.04)]"
+              >
+                <p className="text-[11px] text-text-tertiary mb-2.5 font-sans tracking-[0.15em] uppercase">
+                  {card.label}
+                </p>
+                <p
+                  className="text-xl font-light font-serif tracking-tight"
+                  style={{
+                    color: card.accent ? "var(--accent)" : "var(--text-primary)",
+                  }}
+                >
+                  {card.value}
+                </p>
+              </div>
+            ))}
+          </div>
+          <style>{`
+            @media (max-width: 1023px) {
+              section[aria-label="Portfolio Performance"] .grid {
+                grid-template-columns: repeat(2, 1fr) !important;
+              }
+            }
+            @media (max-width: 639px) {
+              section[aria-label="Portfolio Performance"] .grid {
+                grid-template-columns: 1fr !important;
+              }
+            }
+          `}</style>
+        </>
+      )}
+
+      {/* Section bottom divider */}
+      <div
+        className="mx-auto mt-10"
+        style={{
+          width: "100%",
+          maxWidth: "280px",
+          height: "1px",
+          background: "linear-gradient(90deg, transparent, var(--border), transparent)",
+        }}
+      />
     </section>
   );
 }
