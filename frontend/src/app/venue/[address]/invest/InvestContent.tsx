@@ -771,6 +771,60 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
     };
   }, [claimedLogs, depositedLogs, pendingRevenue, userAddress, userSharesBigint, totalSupplyBigint]);
 
+  // ── Campaign Financial Overview derived metrics ────────────────────────
+  const financialOverview = useMemo(() => {
+    const totalInvestors = analytics.totalInvestors;
+    const isActive = venueState === VenueState.ACTIVE;
+
+    // 1. Estimated Campaign Completion — reuse fundingPercent
+    const completionPercent = isActive ? 100 : fundingPercent;
+
+    // 2. Funding Remaining
+    const fundingRemainingDisplay = isActive ? "0" : remainingEth;
+
+    // 3. Average Ownership Per Investor — 100 / totalInvestors, 2 decimal places
+    let avgOwnership: string;
+    if (totalInvestors === 0) {
+      avgOwnership = "0.00";
+    } else {
+      // Use bigint-style scaled arithmetic: (100 * 100) / totalInvestors gives centesimal
+      const scaled = Math.floor(10000 / totalInvestors);
+      avgOwnership = `${Math.floor(scaled / 100)}.${String(scaled % 100).padStart(2, "0")}`;
+    }
+
+    // 4. Capital Efficiency — same as funding progress
+    const capitalEfficiency = isActive ? 100 : fundingPercent;
+
+    // 5. Average Revenue Per Investor (in ETH)
+    const revenueDistributedWei = depositedLogs.reduce((sum, l) => sum + l.amount, 0n);
+    const avgRevenuePerInvestor =
+      totalInvestors > 0
+        ? formatEthSafe(revenueDistributedWei / BigInt(totalInvestors))
+        : "0";
+
+    // 6. Claims Ratio — revenueClaimed / revenueDistributed
+    const revenueClaimedWei = claimedLogs.reduce((sum, l) => sum + l.amount, 0n);
+    const hasDeposits = revenueDistributedWei > 0n;
+    let claimsRatio: string;
+    if (!hasDeposits) {
+      claimsRatio = "—";
+    } else {
+      // Scale to get integer percentage: (claimed * 100) / distributed
+      const ratioPct = Number((revenueClaimedWei * 100n) / revenueDistributedWei);
+      claimsRatio = `${ratioPct}%`;
+    }
+
+    return {
+      completionPercent,
+      fundingRemainingDisplay,
+      avgOwnership,
+      capitalEfficiency,
+      avgRevenuePerInvestor,
+      claimsRatio,
+      hasActivity: analytics.hasActivity,
+    };
+  }, [analytics, venueState, fundingPercent, remainingEth, depositedLogs, claimedLogs]);
+
   // ── Loaded state ──────────────────────────────────────────────────────
   return (
     <div className="w-full">
@@ -921,6 +975,16 @@ export function InvestContent({ venueAddress }: InvestContentProps) {
           claimedRevenue={portfolio.claimedRevenue}
           totalEarnings={portfolio.totalEarnings}
           investorTier={portfolio.investorTier}
+        />
+      )}
+
+      {/* ─── Campaign Financial Overview ─── */}
+      {(venueState === VenueState.FUNDING || venueState === VenueState.ACTIVE) && (
+        <CampaignFinancialOverview
+          loading={analyticsLoading}
+          overview={financialOverview}
+          fundingPercent={fundingPercent}
+          venueState={venueState}
         />
       )}
 
@@ -1655,6 +1719,187 @@ function CampaignActivityTimeline({ loading, logs }: CampaignActivityTimelinePro
             </li>
           ))}
         </ol>
+      )}
+
+      {/* Section bottom divider */}
+      <div
+        className="mx-auto mt-10"
+        style={{
+          width: "100%",
+          maxWidth: "280px",
+          height: "1px",
+          background: "linear-gradient(90deg, transparent, var(--border), transparent)",
+        }}
+      />
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Campaign Financial Overview
+// ---------------------------------------------------------------------------
+
+interface FinancialOverviewData {
+  completionPercent: number;
+  fundingRemainingDisplay: string;
+  avgOwnership: string;
+  capitalEfficiency: number;
+  avgRevenuePerInvestor: string;
+  claimsRatio: string;
+  hasActivity: boolean;
+}
+
+interface CampaignFinancialOverviewProps {
+  loading: boolean;
+  overview: FinancialOverviewData;
+  fundingPercent: number;
+  venueState: VenueStateValue;
+}
+
+function CampaignFinancialOverview({
+  loading,
+  overview,
+  fundingPercent,
+  venueState,
+}: CampaignFinancialOverviewProps) {
+  const isActive = venueState === VenueState.ACTIVE;
+
+  const cards = useMemo(
+    () => [
+      {
+        label: "Estimated Campaign Completion",
+        value: `${overview.completionPercent}%`,
+        description: "Funding progress",
+        accent: true,
+      },
+      {
+        label: "Funding Remaining",
+        value: `${overview.fundingRemainingDisplay} ETH`,
+        description: isActive ? "Fully funded" : "Capital still needed",
+      },
+      {
+        label: "Avg. Ownership Per Investor",
+        value: `${overview.avgOwnership}%`,
+        description: "Average share distribution",
+      },
+      {
+        label: "Capital Efficiency",
+        value: `${overview.capitalEfficiency}%`,
+        description: "Current funding utilization",
+      },
+      {
+        label: "Avg. Revenue Per Investor",
+        value: `${overview.avgRevenuePerInvestor} ETH`,
+        description: "Distributed revenue per investor",
+      },
+      {
+        label: "Claims Ratio",
+        value: overview.claimsRatio,
+        description: overview.claimsRatio === "—" ? "No revenue deposited yet" : "Revenue claimed vs distributed",
+      },
+    ],
+    [overview, isActive],
+  );
+
+  return (
+    <section
+      className="px-6 pb-10 max-w-5xl mx-auto w-full"
+      aria-label="Campaign Financial Overview"
+    >
+      <h2 className="text-[13px] font-normal tracking-[0.3em] uppercase text-text-secondary mb-7 font-sans text-center">
+        Campaign Financial Overview
+      </h2>
+
+      {loading ? (
+        /* Skeleton grid */
+        <>
+          <div
+            className="grid gap-5"
+            style={{
+              gridTemplateColumns: "repeat(3, 1fr)",
+            }}
+          >
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={i}
+                className="rounded-sm border border-border bg-surface p-7 shadow-[0_2px_12px_rgba(0,0,0,0.04)] animate-pulse"
+              >
+                <div className="h-3 w-24 rounded bg-border/50 mb-4" />
+                <div className="h-6 w-16 rounded bg-border/50 mb-3" />
+                <div className="h-3 w-32 rounded bg-border/50" />
+              </div>
+            ))}
+          </div>
+          <style>{`
+            @media (max-width: 1023px) {
+              section[aria-label="Campaign Financial Overview"] .grid {
+                grid-template-columns: repeat(2, 1fr) !important;
+              }
+            }
+            @media (max-width: 639px) {
+              section[aria-label="Campaign Financial Overview"] .grid {
+                grid-template-columns: 1fr !important;
+              }
+            }
+          `}</style>
+        </>
+      ) : !overview.hasActivity ? (
+        /* Empty state */
+        <div className="rounded-sm border border-border bg-surface-raised/50 p-9 text-center">
+          <p className="text-[14px] text-text-tertiary font-sans font-light">
+            No financial data available yet.
+          </p>
+        </div>
+      ) : (
+        /* Financial Overview cards */
+        <>
+          <div
+            className="grid gap-5"
+            style={{
+              gridTemplateColumns: "repeat(3, 1fr)",
+            }}
+          >
+            {cards.map((card) => (
+              <div
+                key={card.label}
+                className="rounded-sm border border-border bg-surface p-7 shadow-[0_2px_12px_rgba(0,0,0,0.04)]"
+              >
+                <p className="text-[11px] text-text-tertiary mb-2.5 font-sans tracking-[0.15em] uppercase">
+                  {card.label}
+                </p>
+                <p
+                  className="text-xl font-light font-serif tracking-tight mb-2"
+                  style={{
+                    color: card.accent
+                      ? fundingPercent >= 100 || isActive
+                        ? "var(--success)"
+                        : fundingPercent >= 70
+                          ? "#D4A849"
+                          : "var(--accent)"
+                      : "var(--text-primary)",
+                  }}
+                >
+                  {card.value}
+                </p>
+                <p className="text-[12px] text-text-tertiary font-sans font-light">
+                  {card.description}
+                </p>
+              </div>
+            ))}
+          </div>
+          <style>{`
+            @media (max-width: 1023px) {
+              section[aria-label="Campaign Financial Overview"] .grid {
+                grid-template-columns: repeat(2, 1fr) !important;
+              }
+            }
+            @media (max-width: 639px) {
+              section[aria-label="Campaign Financial Overview"] .grid {
+                grid-template-columns: 1fr !important;
+              }
+            }
+          `}</style>
+        </>
       )}
 
       {/* Section bottom divider */}
